@@ -1,5 +1,5 @@
 (defproject gavagai "0.1.0-SNAPSHOT"
-  :description ""
+  :description "Fast Clojure library to convert recursive data structures to native Clojure"
   :url "https://github.com/ngrunwald/gavagai"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
