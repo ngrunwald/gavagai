@@ -5,7 +5,7 @@
 
 (defprotocol Clojurable
   "Protocol for conversion of Classes"
-  (convert [response] "convert response to Clojure"))
+  (translate-object [obj opts depth] "convert response to Clojure"))
 
 (defn- method->arg
   [method]
@@ -29,59 +29,72 @@
                    (getBeanInfo klass)
                    (getPropertyDescriptors)))))
 
-(defn- translate-value
-  [src]
-  (try
-    (cond
-     (or (nil? src) (number? src) (string? src) (coll? src) (true? src) (false? src)) src
-     (instance? java.util.Map src) (persistent! (reduce (fn [acc ^java.util.Map$Entry e]
-                                                          (assoc! acc
-                                                                  (translate-value (.getKey e))
-                                                                  (translate-value (.getValue e))))
-                                                        (transient {}) src))
-     (or (instance? java.util.List src)
-         (.startsWith (.getName (type src)) "[L")) (persistent! (reduce
-                                                                 (fn [acc obj]
-                                                                   (conj! acc (translate-value obj)))
-                                                                 (transient []) src))
-     (extends? Clojurable (class src)) (convert src)
-     :else src)
-    (catch Exception e
-      (println e)
-      src)))
+(defn translate
+  ([obj {:keys [max-depth save-original?] :or {depth 0} :as opts} depth]
+     (if (and max-depth (>= depth max-depth))
+       obj
+       (try
+         (cond
+          (or (nil? obj) (number? obj) (string? obj) (coll? obj) (true? obj) (false? obj)) obj
+          (instance? java.util.Map obj) (persistent! (reduce (fn [acc ^java.util.Map$Entry e]
+                                                                (assoc! acc
+                                                                        (translate (.getKey e) opts (inc depth))
+                                                                        (translate (.getValue e) opts (inc depth))))
+                                                             (transient {}) obj))
+          (or (instance? java.util.List obj)
+               (.startsWith (.getName (type obj)) "[L")) (persistent! (reduce
+                                                                       (fn [acc obj]
+                                                                         (conj! acc (translate obj opts (inc depth))))
+                                                                       (transient []) obj))
+               (extends? Clojurable (class obj)) (translate-object obj opts (inc depth))
+               :else obj)
+         (catch Exception e
+            (println e)
+            obj))))
+  ([obj opts] (translate obj opts 0))
+  ([obj] (translate obj {} 0)))
 
 (defmacro make-converter
-  [class-name]
+  [class-name & [{:keys [only exclude] :or {only [] exclude []}}]]
   (let [klass (Class/forName class-name)
         read-methods (get-read-methods klass)
         sig (reduce (fn [acc m]
-                      (let [m-name (.getName m)]
-                        (assoc acc
-                          (keyword (method->arg m))
-                          (symbol (str "." m-name)))))
+                      (let [m-name (.getName m)
+                            k-name (keyword (method->arg m))
+                            m-call (symbol (str "." m-name))]
+                        (cond
+                         ((into #{} exclude) k-name) acc
+                         ((into #{} only) k-name) (assoc acc k-name m-call)
+                         (not (empty? only)) acc
+                         :else (assoc acc k-name m-call))))
                     {} read-methods)
-        return (gensym "return")]
+        obj (gensym "return")
+        opts (gensym "opts")
+        depth (gensym "depth")]
     `(fn
-       [~(with-meta return {:tag klass})]
-       (let [res# (lazy-hash-map
-                   ~@(let [gets (for [[kw getter] sig]
-                                  `(~kw (translate-value (~getter ~return))))]
-                       (apply concat gets)))]
-         res#))))
+       [~(with-meta obj {:tag klass}) ~opts ~depth]
+       (let [return# (lazy-hash-map
+                      ~@(let [gets (for [[kw getter] sig]
+                                     `(~kw (translate (~getter ~obj) ~opts ~depth)))]
+                          (apply concat gets)))
+             return# (if (:save-original? ~opts) (assoc return# ::original ~obj) return#)]
+         return#))))
 
 (defmacro register-converters
   ^{:private true}
   [& conv-defs]
-  `(do ~@(for [class-name conv-defs]
-           `(let [conv# (make-converter ~class-name)]
+  `(do ~@(for [[class-name & {:keys [only exclude] :or {only [] exclude []}}] conv-defs]
+           `(let [conv# (make-converter ~class-name {:only ~only :exclude ~exclude})]
               (extend ~(symbol class-name)
                   Clojurable
-                  {:convert (fn [return#]
-                              (conv# return#))})))))
+                  {:translate-object (fn [return# opts# depth#]
+                                       (conv# return# opts# depth#))})))))
 
-(def-converters
-  "java.lang.reflect.Method"
-  "java.lang.annotation.Annotation"
-  "java.util.concurrent.ThreadPoolExecutor"
-  "java.util.concurrent.LinkedBlockingQueue")
+(register-converters
+ ["java.lang.Class" :exclude [:class]]
+;  "java.lang.reflect.Method"
+;  "java.lang.annotation.Annotation"
+;  "java.util.concurrent.ThreadPoolExecutor"
+;  "java.util.concurrent.LinkedBlockingQueue"
+ )
 
