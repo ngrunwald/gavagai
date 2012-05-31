@@ -79,7 +79,7 @@
                       ~@(let [gets (for [[kw getter] sig]
                                      `(~kw (translate (~getter ~obj) ~opts ~depth)))
                               adds (for [[kw func] add]
-                                    `(~kw (translate (~func ~obj) ~opts ~depth)))]
+                                     `(~kw (~func ~obj)))]
                           (apply concat (concat gets adds))))]
          return#))))
 
