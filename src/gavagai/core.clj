@@ -58,7 +58,7 @@
   ([obj] (translate obj {} 0)))
 
 (defmacro make-converter
-  [class-name & [{:keys [only exclude add] :or {only [] exclude [] add {}}}]]
+  [class-name & [{:keys [only exclude add] :or {exclude [] add {}}}]]
   (let [klass (Class/forName class-name)
         read-methods (get-read-methods klass)
         sig (reduce (fn [acc m]
@@ -67,7 +67,7 @@
                             m-call (symbol (str "." m-name))]
                         (cond
                          ((into #{} exclude) k-name) acc
-                         ((into #{} only) k-name) (assoc acc k-name m-call)
+                         (and only ((into #{} only) k-name)) (assoc acc k-name m-call)
                          (not (empty? only)) acc
                          :else (assoc acc k-name m-call))))
                     {} read-methods)
@@ -87,8 +87,8 @@
 (defmacro register-converters
   "Registers a converter for a given Java class. Format is: [\"java.util.concurrent.ThreadPoolExecutor\" :exclude [:class]]"
   [& conv-defs]
-  `(do ~@(for [[class-name & {:keys [only exclude] :or {only [] exclude []}}] conv-defs]
-           `(let [conv# (make-converter ~class-name {:only ~only :exclude ~exclude})]
+  `(do ~@(for [[class-name & {:keys [only exclude add] :or {exclude [] add {}}}] conv-defs]
+           `(let [conv# (make-converter ~class-name {:only ~only :exclude ~exclude :add ~add})]
               (extend ~(symbol class-name)
                   Clojurable
                   {:translate-object (fn [return# opts# depth#]
