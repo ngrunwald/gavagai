@@ -32,7 +32,7 @@
 (defn translate
   "Recursively translates one Java object to lazy Clojure data.
    Takes an optional :max-depth to handle recursive objects graphs"
-  ([obj {:keys [max-depth] :as opts} depth]
+  ([obj {:keys [max-depth translate-arrays?] :as opts} depth]
      (if (and max-depth (>= depth max-depth))
        obj
        (try
@@ -44,15 +44,16 @@
                                                                         (translate (.getValue e) opts (inc depth))))
                                                              (transient {}) obj))
           (or (instance? java.util.List obj)
-               (.startsWith (.getName (type obj)) "[L")) (persistent! (reduce
-                                                                       (fn [acc obj]
-                                                                         (conj! acc (translate obj opts (inc depth))))
-                                                                       (transient []) obj))
-               (extends? Clojurable (class obj)) (translate-object obj opts (inc depth))
-               :else obj)
+              (and translate-arrays? (.startsWith (.getName (type obj)) "[L")))
+          (persistent! (reduce
+                        (fn [acc obj]
+                          (conj! acc (translate obj opts (inc depth))))
+                        (transient []) obj))
+          (extends? Clojurable (class obj)) (translate-object obj opts (inc depth))
+          :else obj)
          (catch Exception e
-            (println e)
-            obj))))
+           (println e)
+           obj))))
   ([obj opts] (translate obj opts 0))
   ([obj] (translate obj {} 0)))
 
