@@ -55,7 +55,7 @@
   ([obj] (translate obj {} 0)))
 
 (defmacro make-converter
-  [class-name & [{:keys [only exclude] :or {only [] exclude []}}]]
+  [class-name & [{:keys [only exclude add] :or {only [] exclude [] add {}}}]]
   (let [klass (Class/forName class-name)
         read-methods (get-read-methods klass)
         sig (reduce (fn [acc m]
@@ -68,15 +68,17 @@
                          (not (empty? only)) acc
                          :else (assoc acc k-name m-call))))
                     {} read-methods)
-        obj (gensym "return")
+        obj (gensym "obj")
         opts (gensym "opts")
         depth (gensym "depth")]
     `(fn
        [~(with-meta obj {:tag klass}) ~opts ~depth]
        (let [return# (lazy-hash-map
                       ~@(let [gets (for [[kw getter] sig]
-                                     `(~kw (translate (~getter ~obj) ~opts ~depth)))]
-                          (apply concat gets)))
+                                     `(~kw (translate (~getter ~obj) ~opts ~depth)))
+                              adds (for [[kw func] add]
+                                    `(~kw (translate (~func ~obj) ~opts ~depth)))]
+                          (apply concat (concat gets adds))))
              return# (if (:save-original? ~opts) (assoc return# ::original ~obj) return#)]
          return#))))
 
@@ -91,7 +93,7 @@
                                        (conv# return# opts# depth#))})))))
 
 (register-converters
- ["java.lang.Class" :exclude [:class]]
+ ["java.lang.String" :exclude [:class]]
 ;  "java.lang.reflect.Method"
 ;  "java.lang.annotation.Annotation"
 ;  "java.util.concurrent.ThreadPoolExecutor"
