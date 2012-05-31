@@ -14,6 +14,7 @@ You can register a class by giving its name as a string, and add optional argume
   - `:exclude` will exclude the given methods from the resulting map
   - `:only` will only include the given methods in the resulting map
   - `:add` takes a map of key to functions and includes in the map the result of calling each function with the current object. For exemple, if you want to include the original object in the map, you can do:
+
 ```clojure
 (register-converters
   ["java.util.concurrent.ThreadPoolExecutor" :add {:original identity}])
