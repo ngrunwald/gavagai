@@ -5,7 +5,7 @@
 
 (defprotocol Clojurable
   "Protocol for conversion of Classes"
-  (translate-object [obj opts depth] "convert response to Clojure"))
+  (translate-object [obj opts depth] "Convert response to Clojure data"))
 
 (defn- method->arg
   [method]
@@ -30,7 +30,9 @@
                    (getPropertyDescriptors)))))
 
 (defn translate
-  ([obj {:keys [max-depth save-original?] :or {depth 0} :as opts} depth]
+  "Recursively translates one Java object to lazy Clojure data.
+   Takes an optional :max-depth to handle recursive objects graphs"
+  ([obj {:keys [max-depth] :as opts} depth]
      (if (and max-depth (>= depth max-depth))
        obj
        (try
@@ -78,12 +80,11 @@
                                      `(~kw (translate (~getter ~obj) ~opts ~depth)))
                               adds (for [[kw func] add]
                                     `(~kw (translate (~func ~obj) ~opts ~depth)))]
-                          (apply concat (concat gets adds))))
-             return# (if (:save-original? ~opts) (assoc return# ::original ~obj) return#)]
+                          (apply concat (concat gets adds))))]
          return#))))
 
 (defmacro register-converters
-  ^{:private true}
+  "Registers a converter for a given Java class. Format is: [\"java.util.concurrent.ThreadPoolExecutor\" :exclude [:class]]"
   [& conv-defs]
   `(do ~@(for [[class-name & {:keys [only exclude] :or {only [] exclude []}}] conv-defs]
            `(let [conv# (make-converter ~class-name {:only ~only :exclude ~exclude})]
@@ -92,11 +93,7 @@
                   {:translate-object (fn [return# opts# depth#]
                                        (conv# return# opts# depth#))})))))
 
-(register-converters
- ["java.lang.String" :exclude [:class]]
-;  "java.lang.reflect.Method"
-;  "java.lang.annotation.Annotation"
-;  "java.util.concurrent.ThreadPoolExecutor"
-;  "java.util.concurrent.LinkedBlockingQueue"
- )
+(comment
+  (register-converters
+  ["java.util.concurrent.ThreadPoolExecutor" :exclude [:class]]))
 
