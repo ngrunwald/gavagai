@@ -90,6 +90,7 @@
 (defmacro make-converter
   [class-name & [{:keys [only exclude add] :or {exclude [] add {}}}]]
   (let [klass (Class/forName class-name)
+        klass-symb (symbol class-name)
         read-methods (get-read-methods klass)
         sig (reduce (fn [acc m]
                       (let [m-name (.getName m)
@@ -101,11 +102,11 @@
                          (not (empty? only)) acc
                          :else (assoc acc k-name m-call))))
                     {} read-methods)
-        obj (gensym "obj")
+        obj (with-meta (gensym "obj") {:tag klass-symb})
         opts (gensym "opts")
         depth (gensym "depth")]
     `(fn
-       [~(with-meta obj {:tag klass}) ~opts]
+       [~obj ~opts]
        (let [return# (lazy-hash-map
                       ~@(let [gets (for [[kw getter] sig]
                                      `(~kw (translate (~getter ~obj) ~opts)))
