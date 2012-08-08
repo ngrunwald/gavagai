@@ -6,10 +6,9 @@
 
 (declare translate-object)
 (declare Clojurable)
+(declare translate)
 
 (def ^{:dynamic true} *translator-ns*)
-
-(set! *warn-on-reflection* true)
 
 (defmacro init-translator!
   []
@@ -17,7 +16,7 @@
      "Protocol for conversion of Classes"
      (~'translate-object [~'obj ~'opts] "Convert response to Clojure data")))
 
-(defn- method->arg
+(defn method->arg
   [^Method method]
   (let [name (.getName method)
         typ (.getReturnType method)
@@ -46,6 +45,66 @@
                                 (find-ns ~nspace))]
      ~@body))
 
+(defn type-array-of
+  [t]
+  (.getClass (java.lang.reflect.Array/newInstance t 0)))
+
+(defprotocol Translator
+  (translate* [obj opts]))
+
+(extend-type nil
+  Translator
+  (translate* [obj _] obj))
+
+(extend-type java.util.Map
+  Translator
+  (translate* [obj {:keys [depth nspace] :as opts
+                    :or {depth 0 nspace *translator-ns*}}]
+    (persistent!
+     (let [new-depth (inc depth)]
+       (reduce
+        (fn [acc ^java.util.Map$Entry e]
+          (assoc! acc
+                  (translate (.getKey e)
+                             (assoc opts :depth new-depth))
+                  (translate (.getValue e)
+                             (assoc opts :depth new-depth))))
+        (transient {}) obj)))))
+
+(defn translate-list
+  [obj {:keys [depth nspace] :as opts
+        :or {depth 0 nspace *translator-ns*}}]
+  (persistent!
+   (reduce
+    (fn [acc obj]
+      (conj! acc (translate obj
+                            (assoc opts :depth (inc depth)))))
+    (transient []) obj)))
+
+(extend-type java.util.List
+  Translator
+  (translate* [obj opts] (translate-list obj opts)))
+
+(extend-type (type-array-of Object)
+  Translator
+  (translate* [obj {:keys [translate-arrays?] :as opts}]
+    (if translate-arrays?
+      (translate-list obj opts)
+      obj)))
+
+(extend-type Object
+  Translator
+  (translate* [obj _] obj))
+
+;; (extends? (var-get (ns-resolve nspace 'Clojurable)) (class obj))
+;; ((var-get (ns-resolve nspace 'translate-object)) obj (assoc opts
+;;                                                        :nspace nspace
+;;                                                        :depth new-depth))
+
+(defn get-translate-fn
+  [nspace]
+  (var-get (ns-resolve nspace 'translate-object)))
+
 (defn translate
   "Recursively translates one Java object to lazy Clojure data.
    Takes an optional :max-depth to handle recursive objects graphs"
@@ -54,37 +113,9 @@
      (if (and max-depth (>= depth max-depth))
        obj
        (try
-         (let [new-depth (inc depth)
-               ^Class obj-class (type obj)]
-           (cond
-            (or (nil? obj) (number? obj) (string? obj) (coll? obj) (true? obj) (false? obj)) obj
-            (instance? java.util.Map obj) (persistent!
-                                           (reduce
-                                            (fn [acc ^java.util.Map$Entry e]
-                                              (assoc! acc
-                                                      (translate (.getKey e)
-                                                                 (assoc opts
-                                                                   :nspace nspace
-                                                                   :depth new-depth))
-                                                      (translate (.getValue e)
-                                                                 (assoc opts
-                                                                   :nspace nspace
-                                                                   :depth new-depth))))
-                                                               (transient {}) obj))
-            (or (instance? java.util.List obj)
-                (and translate-arrays? (.startsWith (.getName obj-class) "[L")))
-            (persistent! (reduce
-                          (fn [acc obj]
-                            (conj! acc (translate obj
-                                                  (assoc opts
-                                                    :nspace nspace
-                                                    :depth new-depth))))
-                          (transient []) obj))
-            (extends? (var-get (ns-resolve nspace 'Clojurable)) (class obj))
-            ((var-get (ns-resolve nspace 'translate-object)) obj (assoc opts
-                                                                 :nspace nspace
-                                                                 :depth new-depth))
-            :else obj))
+         (if (extends? Clojurable (class obj))
+           ((get-translate-fn nspace) obj (assoc opts :depth (inc depth)))
+           (translate* obj opts))
          (catch Exception e
            (println e)
            (throw e)
@@ -120,7 +151,8 @@
          return#))))
 
 (defmacro register-converters
-  "Registers a converter for a given Java class. Format is: [\"java.util.concurrent.ThreadPoolExecutor\" :exclude [:class]]"
+  "Registers a converter for a given Java class.
+ Format is: [\"java.util.Date [:class]] :add {:string str}"
   [& conv-defs]
   `(do
      (init-translator!)
@@ -132,4 +164,5 @@
 
 (comment
   (register-converters
-   ["java.util.Date" :exclude [:class]]))
+   ["java.util.Date" :exclude [:class] :add {:string str}])
+  (with-translator-ns 'gavagai.core (translate (java.util.Date.))))
