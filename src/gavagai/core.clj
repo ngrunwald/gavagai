@@ -1,12 +1,15 @@
 (ns gavagai.core
   (:use [lazymap.core])
   (:require [clojure.string :as str])
-  (:import [java.beans Introspector]))
+  (:import [java.beans Introspector]
+           [java.lang.reflect Method]))
 
 (declare translate-object)
 (declare Clojurable)
 
 (def ^{:dynamic true} *translator-ns*)
+
+(set! *warn-on-reflection* true)
 
 (defmacro init-translator!
   []
@@ -15,7 +18,7 @@
      (~'translate-object [~'obj ~'opts] "Convert response to Clojure data")))
 
 (defn- method->arg
-  [method]
+  [^Method method]
   (let [name (.getName method)
         typ (.getReturnType method)
         conv (str/replace name #"^get" "")
@@ -51,7 +54,8 @@
      (if (and max-depth (>= depth max-depth))
        obj
        (try
-         (let [new-depth (inc depth)]
+         (let [new-depth (inc depth)
+               ^Class obj-class (type obj)]
            (cond
             (or (nil? obj) (number? obj) (string? obj) (coll? obj) (true? obj) (false? obj)) obj
             (instance? java.util.Map obj) (persistent!
@@ -68,7 +72,7 @@
                                                                    :depth new-depth))))
                                                                (transient {}) obj))
             (or (instance? java.util.List obj)
-                (and translate-arrays? (.startsWith (.getName (type obj)) "[L")))
+                (and translate-arrays? (.startsWith (.getName obj-class) "[L")))
             (persistent! (reduce
                           (fn [acc obj]
                             (conj! acc (translate obj
@@ -92,7 +96,7 @@
   (let [klass (Class/forName class-name)
         klass-symb (symbol class-name)
         read-methods (get-read-methods klass)
-        sig (reduce (fn [acc m]
+        sig (reduce (fn [acc ^Method m]
                       (let [m-name (.getName m)
                             k-name (keyword (method->arg m))
                             m-call (symbol (str "." m-name))]
@@ -128,4 +132,4 @@
 
 (comment
   (register-converters
-   ["java.util.concurrent.ThreadPoolExecutor" :exclude [:class]]))
+   ["java.util.Date" :exclude [:class]]))
