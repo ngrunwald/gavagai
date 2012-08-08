@@ -40,9 +40,14 @@
 
 (defmacro with-translator-ns
   [nspace & body]
-  `(binding [*translator-ns* (if (instance? clojure.lang.Namespace ~nspace)
-                                ~nspace
-                                (find-ns ~nspace))]
+  `(binding [*translator-ns* (if (instance? clojure.lang.Namespace '~nspace)
+                                '~nspace
+                                (find-ns '~nspace))]
+     ~@body))
+
+(defmacro with-current-ns
+  [& body]
+  `(binding [*translator-ns* '~*ns*]
      ~@body))
 
 (defn type-array-of
