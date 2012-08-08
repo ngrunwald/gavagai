@@ -96,26 +96,23 @@
   Translator
   (translate* [obj _] obj))
 
-;; (extends? (var-get (ns-resolve nspace 'Clojurable)) (class obj))
-;; ((var-get (ns-resolve nspace 'translate-object)) obj (assoc opts
-;;                                                        :nspace nspace
-;;                                                        :depth new-depth))
-
-(defn get-translate-fn
-  [nspace]
-  (var-get (ns-resolve nspace 'translate-object)))
+(defn get-var-in-ns
+  [nspace symb]
+  (var-get (ns-resolve nspace symb)))
 
 (defn translate
   "Recursively translates one Java object to lazy Clojure data.
    Takes an optional :max-depth to handle recursive objects graphs"
   ([obj {:keys [max-depth translate-arrays? depth nspace] :as opts
-         :or {depth 0 nspace *translator-ns*}}]
+         :or {depth 0}}]
      (if (and max-depth (>= depth max-depth))
        obj
        (try
-         (if (extends? Clojurable (class obj))
-           ((get-translate-fn nspace) obj (assoc opts :depth (inc depth)))
-           (translate* obj opts))
+         (let [nspace (or nspace *translator-ns*)
+               opts* (if (:nspace opts) opts (assoc opts :nspace nspace))]
+           (if (extends? (get-var-in-ns nspace 'Clojurable) (class obj))
+             ((get-var-in-ns nspace 'translate-object) obj (assoc opts* :depth (inc depth)))
+             (translate* obj opts*)))
          (catch Exception e
            (println e)
            (throw e)
