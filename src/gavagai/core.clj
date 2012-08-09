@@ -45,10 +45,10 @@
                                 (find-ns '~nspace))]
      ~@body))
 
-(defmacro with-current-ns
-  [& body]
-  `(binding [*translator-ns* '~*ns*]
-     ~@body))
+;; (defmacro with-current-ns
+;;   [& body]
+;;   `(binding [*translator-ns* '~*ns*]
+;;      ~@body))
 
 (defn type-array-of
   [t]
@@ -167,4 +167,4 @@
 (comment
   (register-converters
    ["java.util.Date" :exclude [:class] :add {:string str}])
-  (with-translator-ns 'gavagai.core (translate (java.util.Date.))))
+  (with-translator-ns gavagai.core (translate (java.util.Date.))))
