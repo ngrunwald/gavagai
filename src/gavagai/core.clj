@@ -156,13 +156,15 @@
   "Registers a converter for a given Java class.
  Format is: [\"java.util.Date [:class]] :add {:string str}"
   [& conv-defs]
-  `(do
-     (init-translator!)
-     ~@(for [[class-name & {:keys [only exclude add] :or {exclude [] add {}}}] conv-defs]
-         `(let [conv# (make-converter ~class-name {:only ~only :exclude ~exclude :add ~add})]
-            (extend ~(symbol class-name)
-              ~'Clojurable
-              {:translate-object conv#})))))
+  (let [added (count conv-defs)]
+    `(do
+      (init-translator!)
+      ~@(for [[class-name & {:keys [only exclude add] :or {exclude [] add {}}}] conv-defs]
+          `(let [conv# (make-converter ~class-name {:only ~only :exclude ~exclude :add ~add})]
+             (extend ~(symbol class-name)
+               ~'Clojurable
+               {:translate-object conv#})))
+      ~added)))
 
 (comment
   (register-converters
