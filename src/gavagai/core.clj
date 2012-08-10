@@ -1,6 +1,6 @@
 (ns gavagai.core
-  (:use [lazymap.core])
-  (:require [clojure.string :as str])
+  (:require [clojure.string :as str]
+            [lazymap.core :as lz])
   (:import [java.beans Introspector]
            [java.lang.reflect Method]))
 
@@ -13,7 +13,7 @@
 (defmacro init-translator!
   []
   `(defprotocol ~'Clojurable
-     "Protocol for conversion of Classes"
+     "Protocol for conversion of custom Java classes"
      (~'translate-object [~'obj ~'opts] "Convert response to Clojure data")))
 
 (defn method->arg
@@ -39,6 +39,7 @@
                    (getPropertyDescriptors)))))
 
 (defmacro with-translator-ns
+  "Sets the namespace to use for translate call within the body"
   [nspace & body]
   `(binding [*translator-ns* (if (instance? clojure.lang.Namespace '~nspace)
                                 '~nspace
@@ -55,6 +56,7 @@
   (.getClass (java.lang.reflect.Array/newInstance t 0)))
 
 (defprotocol Translator
+  "Protocol to translate generic Java objects"
   (translate* [obj opts]))
 
 (extend-type nil
@@ -106,8 +108,11 @@
   (var-get (ns-resolve nspace symb)))
 
 (defn translate
-  "Recursively translates one Java object to lazy Clojure data.
-   Takes an optional :max-depth to handle recursive objects graphs"
+  "Recursively translates a Java object to Clojure data structures.
+   Arguments
+     :max-depth -> integer (for recursive graph objects)
+     :nspace    -> symbol or namespace object
+                   (useful if the with-translator-ns macro cannot be used)"
   ([obj {:keys [max-depth translate-arrays? depth nspace] :as opts
          :or {depth 0}}]
      (if (and max-depth (>= depth max-depth))
@@ -125,7 +130,8 @@
   ([obj] (translate obj {})))
 
 (defmacro make-converter
-  [class-name & [{:keys [only exclude add] :or {exclude [] add {}}}]]
+  [class-name & [{:keys [only exclude add lazy?]
+                  :or {exclude [] add {} lazy? true}}]]
   (let [klass (Class/forName class-name)
         klass-symb (symbol class-name)
         read-methods (get-read-methods klass)
@@ -144,7 +150,7 @@
         depth (gensym "depth")]
     `(fn
        [~obj ~opts]
-       (let [return# (lazy-hash-map
+       (let [return# (~(if lazy? `lz/lazy-hash-map `hash-map)
                       ~@(let [gets (for [[kw getter] sig]
                                      `(~kw (translate (~getter ~obj) ~opts)))
                               adds (for [[kw func] add]
@@ -153,14 +159,24 @@
          return#))))
 
 (defmacro register-converters
-  "Registers a converter for a given Java class.
- Format is: [\"java.util.Date [:class]] :add {:string str}"
+  "Registers a converter for a given Java class given as a String
+   Optional arguments
+     - :only    (vector) -> only translate these methods
+     - :exclude (vector) -> exclude the methods from translation
+     - :add     (hash)   -> add under the given key the result of applying
+                            the function given as val to the object
+     - :lazy?   (bool)   -> should the returned map be lazy or not
+                            (lazy by default)
+   Example
+     (register-converters
+       [\"java.util.Date\" :exclude [:class] :add {:string str} :lazy? false])"
   [& conv-defs]
   (let [added (count conv-defs)]
     `(do
       (init-translator!)
-      ~@(for [[class-name & {:keys [only exclude add] :or {exclude [] add {}}}] conv-defs]
-          `(let [conv# (make-converter ~class-name {:only ~only :exclude ~exclude :add ~add})]
+      ~@(for [[class-name & {:keys [only exclude add lazy?]
+                             :or {exclude [] add {} lazy? true}}] conv-defs]
+          `(let [conv# (make-converter ~class-name {:only ~only :exclude ~exclude :add ~add :lazy? ~lazy?})]
              (extend ~(symbol class-name)
                ~'Clojurable
                {:translate-object conv#})))
