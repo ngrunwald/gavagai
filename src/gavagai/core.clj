@@ -135,6 +135,9 @@
   (let [klass (Class/forName class-name)
         klass-symb (symbol class-name)
         read-methods (get-read-methods klass)
+        fields-nb (if only
+                    (+ (count only) (count add))
+                    (- (+ (count read-methods) (count add)) (count exclude)))
         sig (reduce (fn [acc ^Method m]
                       (let [m-name (.getName m)
                             k-name (keyword (method->arg m))
@@ -150,7 +153,7 @@
         depth (gensym "depth")]
     `(fn
        [~obj ~opts]
-       (let [return# (~(if lazy? `lz/lazy-hash-map `hash-map)
+       (let [return# (~(if lazy? `lz/lazy-hash-map (if (> fields-nb 8) `hash-map `array-map))
                       ~@(let [gets (for [[kw getter] sig]
                                      `(~kw (translate (~getter ~obj) ~opts)))
                               adds (for [[kw func] add]
