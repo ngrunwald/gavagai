@@ -128,7 +128,6 @@
        (try
          (let [nspace (or nspace *translator-ns*)
                opts* (if (:nspace opts) opts (assoc opts :nspace nspace))]
-           (println "Clojurable" (extends? (get-var-in-ns nspace 'Clojurable) (class obj)))
            (if (extends? (get-var-in-ns nspace 'Clojurable) (class obj))
              ((get-var-in-ns nspace 'translate-object) obj (assoc opts* :depth (inc depth)))
              (translate* obj opts*)))
