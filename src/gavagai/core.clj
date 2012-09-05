@@ -55,6 +55,8 @@
   [t]
   (.getClass (java.lang.reflect.Array/newInstance t 0)))
 
+(def any-array-class (type-array-of Object))
+
 (defprotocol Translator
   "Protocol to translate generic Java objects"
   (translate* [obj opts]))
@@ -92,21 +94,6 @@
   Translator
   (translate* [obj opts] (translate-list obj opts)))
 
-;; TODO Find out why this does not work
-;; (extend-type (type-array-of Object)
-;;   Translator
-;;   (translate* [obj {:keys [translate-arrays?] :as opts}]
-;;     (if translate-arrays?
-;;       (translate-list obj opts)
-;;       obj)))
-
-(extend-type (type-array-of String)
-  Translator
-  (translate* [obj {:keys [translate-arrays?] :as opts}]
-    (if translate-arrays?
-      (translate-list obj opts)
-      obj)))
-
 (extend-type Object
   Translator
   (translate* [obj _] obj))
@@ -121,28 +108,33 @@
      :max-depth -> integer (for recursive graph objects)
      :nspace    -> symbol or namespace object
                    (useful if the with-translator-ns macro cannot be used)"
-  ([obj {:keys [max-depth translate-arrays? depth nspace] :as opts
-         :or {depth 0}}]
+  ([obj {:keys [max-depth depth nspace] :as opts
+         :or {depth 0}}
+    {:keys [translate-arrays?] :as conf}]
      (if (and max-depth (>= depth max-depth))
        obj
        (try
          (let [nspace (or nspace *translator-ns*)
                opts* (if (:nspace opts) opts (assoc opts :nspace nspace))]
-           (if (extends? (get-var-in-ns nspace 'Clojurable) (class obj))
-             ((get-var-in-ns nspace 'translate-object) obj (assoc opts* :depth (inc depth)))
-             (translate* obj opts*)))
+           (cond
+            (extends? (get-var-in-ns nspace 'Clojurable) (class obj))
+            ((get-var-in-ns nspace 'translate-object) obj (assoc opts* :depth (inc depth)))
+            (and translate-arrays? (instance? any-array-class obj)) (translate-list obj opts*)
+            :else (translate* obj opts*)))
          (catch Exception e
            (println e)
            (throw e)
            obj))))
-  ([obj] (translate obj {})))
+  ([obj opts] (translate obj opts {}))
+  ([obj] (translate obj {} {})))
 
 (defmacro make-converter
-  [class-name & [{:keys [only exclude add lazy?]
+  [class-name & [{:keys [only exclude add lazy? translate-arrays?]
                   :or {exclude [] add {} lazy? true}}]]
   (let [klass (Class/forName class-name)
         klass-symb (symbol class-name)
         read-methods (get-read-methods klass)
+        conf {:translate-arrays? translate-arrays?}
         fields-nb (if only
                     (+ (count only) (count add))
                     (- (+ (count read-methods) (count add)) (count exclude)))
@@ -163,7 +155,7 @@
        [~obj ~opts]
        (let [return# (~(if lazy? `lz/lazy-hash-map (if (> fields-nb 8) `hash-map `array-map))
                       ~@(let [gets (for [[kw getter] sig]
-                                     `(~kw (translate (~getter ~obj) ~opts)))
+                                     `(~kw (translate (~getter ~obj) ~opts ~conf)))
                               adds (for [[kw func] add]
                                      `(~kw (~func ~obj)))]
                           (apply concat (concat gets adds))))]
@@ -172,12 +164,14 @@
 (defmacro register-converters
   "Registers a converter for a given Java class given as a String
    Optional arguments
-     - :only    (vector) -> only translate these methods
-     - :exclude (vector) -> exclude the methods from translation
-     - :add     (hash)   -> add under the given key the result of applying
-                            the function given as val to the object
-     - :lazy?   (bool)   -> should the returned map be lazy or not
-                            (lazy by default)
+     - :only    (vector)  -> only translate these methods
+     - :exclude (vector)  -> exclude the methods from translation
+     - :add     (hash)    -> add under the given key the result of applying
+                             the function given as val to the object
+     - :lazy?   (bool)    -> should the returned map be lazy or not
+                             (lazy by default)
+     - :translate-arrays? (bool) -> translate native arrays to vectors
+                                    (false by default)
    Example
      (register-converters
        [\"java.util.Date\" :exclude [:class] :add {:string str} :lazy? false])"
@@ -185,9 +179,12 @@
   (let [added (count conv-defs)]
     `(do
       (init-translator!)
-      ~@(for [[class-name & {:keys [only exclude add lazy?]
+      ~@(for [[class-name & {:keys [only exclude add lazy? translate-arrays?]
                              :or {exclude [] add {} lazy? true}}] conv-defs]
-          `(let [conv# (make-converter ~class-name {:only ~only :exclude ~exclude :add ~add :lazy? ~lazy?})]
+          `(let [conv# (make-converter ~class-name
+                                       {:only ~only :exclude ~exclude
+                                        :add ~add :lazy? ~lazy?
+                                        :translate-arrays? ~translate-arrays?})]
              (extend ~(symbol class-name)
                ~'Clojurable
                {:translate-object conv#})))
