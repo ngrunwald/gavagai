@@ -2,6 +2,15 @@
 
 Easy to use conversion library between tree-like POJOs or anything else presenting a bean-like interface and Clojure data structures. It can be used as a fast, configurable and recursive replacement for core/bean. It is intended as a tool to easily build a bridge between Clojure and Java when writing wrapper libraries.
 
+## Installation
+
+`gavagai` is available as a Maven artifact from
+[Clojars](http://clojars.org/gavagai):
+
+```clojure
+[gavagai "0.1.0"]
+```
+
 ## Usage
 
 You need first to register a converter for every Java class you need to have translated, like so:
@@ -70,7 +79,7 @@ enabled,focusable,visible>, :font nil, :accessible-component
 "getSeconds" :seconds, "getMonth" :month, "getYear" :year, "getHours"
 :hours}
 
-(inspect-class String)
+(g/inspect-class String)
 => {"isEmpty" :empty?, "getBytes" :bytes, "getClass" :class}
 ```
 
