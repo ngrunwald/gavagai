@@ -38,6 +38,14 @@
                    (getBeanInfo klass)
                    (getPropertyDescriptors)))))
 
+(defn inspect-class
+  "Inspects a class and returns a seq of methods name to their gavagai keyword representation"
+  [klass]
+  (into {}
+        (map (fn [m]
+               [(.getName m) (method->arg m)])
+             (get-read-methods klass))))
+
 (defmacro with-translator-ns
   "Sets the namespace to use for translate call within the body"
   [nspace & body]
@@ -45,11 +53,6 @@
                                 '~nspace
                                 (find-ns '~nspace))]
      ~@body))
-
-;; (defmacro with-current-ns
-;;   [& body]
-;;   `(binding [*translator-ns* '~*ns*]
-;;      ~@body))
 
 (defn type-array-of
   [t]

@@ -30,15 +30,14 @@ You can then call `translate` with the correct namespace on any registered POJO 
 ```clojure
 (let [b (java.awt.Color. 10 10 10)]
       (g/translate b {:nspace 'my.nspace}))
-
 => {:red 10, :blue 10, :green 10, :string "java.awt.Color[r=10,g=10,b=10]"}
 
 ;; There is also a macro to avoid specifying the namespace in the options:
 (let [b (java.awt.Button. "test")]
       (g/with-translator-ns my.nspace
         (g/translate b {:max-depth 2})])
-
-=> {:accessible-context {:accessible-role #<AccessibleRole push button>, :accessible-action #<AccessibleAWTButton
+=> {:accessible-context {:accessible-role #<AccessibleRole push button>,
+:accessible-action #<AccessibleAWTButton
 java.awt.Button$AccessibleAWTButton@63f8c10e>, :background nil,
 :foreground nil, :accessible-name "test", :minimum-accessible-value 0,
 :class java.awt.Button$AccessibleAWTButton, :visible? true,
@@ -60,6 +59,19 @@ enabled,focusable,visible>, :font nil, :accessible-component
 :background nil, :foreground nil, :name "button1", :visible? true,
 :action-command "test", :action-listeners [], :enabled? true,
 :focusable? true, :label "test", :font nil}
+```
+
+ The map keys are keywords obtained by removing the `get` or `is` prefix, hyphenizing the java method name, and adding a final `?` if the method returns a boolean. You can check what keys gavagai will use for every eligible methods by using the `inspect-class` function.
+
+```clojure
+(g/inspect-class java.util.Date)
+=> {"getTimezoneOffset" :timezone-offset, "getClass" :class, "getTime"
+:time, "getDate" :date, "getDay" :day, "getMinutes" :minutes,
+"getSeconds" :seconds, "getMonth" :month, "getYear" :year, "getHours"
+:hours}
+
+(inspect-class String)
+=> {"isEmpty" :empty?, "getBytes" :bytes, "getClass" :class}
 ```
 
 ## Performance and Caveats
