@@ -2,7 +2,8 @@
   (:require [clojure.string :as str]
             [lazymap.core :as lz])
   (:import [java.beans Introspector]
-           [java.lang.reflect Method]))
+           [java.lang.reflect Method]
+           [java.util.regex Pattern]))
 
 (declare translate-object)
 (declare Clojurable)
@@ -138,6 +139,10 @@
         klass-symb (symbol class-name)
         read-methods (get-read-methods klass)
         conf {:translate-arrays? translate-arrays?}
+        full-exclude (map
+                      #(if (instance? Pattern %)
+                         %
+                         (Pattern/compile (Pattern/quote (name %)))) exclude)
         fields-nb (if only
                     (+ (count only) (count add))
                     (- (+ (count read-methods) (count add)) (count exclude)))
@@ -146,7 +151,7 @@
                             k-name (keyword (method->arg m))
                             m-call (symbol (str "." m-name))]
                         (cond
-                         ((into #{} exclude) k-name) acc
+                         (some #(re-matches % (name k-name)) full-exclude) acc
                          (and only ((into #{} only) k-name)) (assoc acc k-name m-call)
                          (not (empty? only)) acc
                          :else (assoc acc k-name m-call))))
