@@ -140,7 +140,7 @@
 
 (defmacro make-converter
   [class-name & [{:keys [only exclude add lazy? translate-arrays?]
-                  :or {exclude [] add {} lazy? true}}]]
+                  :or {exclude [] add {} lazy? true} :as opts}]]
   (let [klass (Class/forName class-name)
         klass-symb (symbol class-name)
         read-methods (get-read-methods klass)
@@ -173,6 +173,13 @@
                           (apply concat (concat gets adds))))]
          return#))))
 
+(defn default-map
+  [base default]
+  (merge-with
+   (fn [b d]
+     (if (nil? b) d b))
+   base default))
+
 (defmacro register-converters
   "Registers a converter for a given Java class given as a String
    Optional arguments
@@ -187,16 +194,24 @@
    Example
      (register-converters
        [\"java.util.Date\" :exclude [:class] :add {:string str} :lazy? false])"
-  [& conv-defs]
-  (let [added (count conv-defs)]
+  [default & conv-defs]
+  (let [[full-conv-defs default-opts] (if (map? default)
+                                        [conv-defs default]
+                                        [(conj conv-defs default) {}])
+        added (count full-conv-defs)]
     `(do
       (init-translator!)
-      ~@(for [[class-name & {:keys [only exclude add lazy? translate-arrays?]
-                             :or {exclude [] add {} lazy? true}}] conv-defs]
-          `(let [conv# (make-converter ~class-name
-                                       {:only ~only :exclude ~exclude
-                                        :add ~add :lazy? ~lazy?
-                                        :translate-arrays? ~translate-arrays?})]
+      ~@(for [[class-name & {:as opt-spec}] full-conv-defs
+              :let [given-opts (default-map opt-spec
+                                 {:exclude [] :add {} :lazy? true})
+                    full-opts (merge-with
+                               (fn [default over]
+                                 (cond
+                                  (every? map? [default over]) (merge default over)
+                                  (every? coll? [default over]) (distinct (concat default over))
+                                  :else over))
+                               default-opts given-opts)]]
+          `(let [conv# (make-converter ~class-name ~full-opts)]
              (extend ~(symbol class-name)
                ~'Clojurable
                {:translate-object conv#})))
