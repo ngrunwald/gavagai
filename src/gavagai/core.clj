@@ -173,7 +173,7 @@
   "Registers a converter for a given Java class given as a String
    Optional arguments
      - :only    (vector)  -> only translate these methods
-     - :exclude (vector)  -> exclude the methods from translation
+     - :exclude (vector)  -> exclude the methods from translation (keywords or patterns)
      - :add     (hash)    -> add under the given key the result of applying
                              the function given as val to the object
      - :lazy?   (bool)    -> should the returned map be lazy or not

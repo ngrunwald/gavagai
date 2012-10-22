@@ -6,7 +6,7 @@
  ["java.util.Date" :exclude [:class] :add {:string str}]
  ["java.awt.Color" :only [:green :red :blue] :add {:string str} :lazy? false]
  ["java.awt.Button" :translate-arrays? true :lazy? false]
- ["java.awt.Button$AccessibleAWTButton" :exclude [:locale] :lazy? false])
+ ["java.awt.Button$AccessibleAWTButton" :exclude [#"loc.le"] :lazy? false])
 
 (deftest basic-tests
   (testing "basic translations tests"
@@ -27,6 +27,7 @@
     (let [b (java.awt.Button. "test")]
       (g/with-translator-ns gavagai.core-test
         (let [tb (g/translate b {:max-depth 3})]
+          (is (nil? (:locale tb)))
           (is (instance? java.awt.Button$AccessibleAWTButton
                          (get-in tb [:accessible-context :accessible-action :accessible-action])))
           (is (vector? (:action-listeners tb))))))))
