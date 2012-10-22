@@ -4,7 +4,7 @@
 
 (g/register-converters
  ["java.util.Date" :exclude [:class] :add {:string str}]
- ["java.awt.Color" :only [:green :red :blue] :add {:string str} :lazy? false]
+ ["java.awt.Color" :only [:green #"r.d" :blue] :add {:string str} :lazy? false]
  ["java.awt.Button" :translate-arrays? true :lazy? false]
  ["java.awt.Button$AccessibleAWTButton" :exclude [#"loc.le"] :lazy? false])
 

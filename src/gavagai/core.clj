@@ -132,6 +132,12 @@
   ([obj opts] (translate obj opts {}))
   ([obj] (translate obj {} {})))
 
+(defn- convert-to-pattern
+  [elt]
+  (if (instance? Pattern elt)
+    elt
+    (Pattern/compile (Pattern/quote (name elt)))))
+
 (defmacro make-converter
   [class-name & [{:keys [only exclude add lazy? translate-arrays?]
                   :or {exclude [] add {} lazy? true}}]]
@@ -139,10 +145,8 @@
         klass-symb (symbol class-name)
         read-methods (get-read-methods klass)
         conf {:translate-arrays? translate-arrays?}
-        full-exclude (map
-                      #(if (instance? Pattern %)
-                         %
-                         (Pattern/compile (Pattern/quote (name %)))) exclude)
+        full-exclude (map convert-to-pattern exclude)
+        full-only (map convert-to-pattern only)
         fields-nb (if only
                     (+ (count only) (count add))
                     (- (+ (count read-methods) (count add)) (count exclude)))
@@ -152,7 +156,7 @@
                             m-call (symbol (str "." m-name))]
                         (cond
                          (some #(re-matches % (name k-name)) full-exclude) acc
-                         (and only ((into #{} only) k-name)) (assoc acc k-name m-call)
+                         (and only (some #(re-matches % (name k-name)) full-only)) (assoc acc k-name m-call)
                          (not (empty? only)) acc
                          :else (assoc acc k-name m-call))))
                     {} read-methods)
