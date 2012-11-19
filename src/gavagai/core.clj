@@ -13,9 +13,11 @@
 
 (defmacro init-translator!
   []
-  `(defprotocol ~'Clojurable
-     "Protocol for conversion of custom Java classes"
-     (~'translate-object [~'obj ~'opts] "Convert response to Clojure data")))
+  `(if (or (nil? (resolve (symbol "Clojurable")))
+           (instance? clojure.lang.Var$Unbound (var-get (resolve (symbol "Clojurable")))))
+     (defprotocol ~'Clojurable
+       "Protocol for conversion of custom Java classes"
+       (~'translate-object [~'obj ~'opts] "Convert response to Clojure data"))))
 
 (defn method->arg
   [^Method method]
