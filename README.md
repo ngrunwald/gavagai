@@ -26,7 +26,7 @@ You need first to register a converter for every Java class you need to have tra
  ["java.awt.Button$AccessibleAWTButton" :exclude [:locale]])
 ```
 
-The converters are registered under the namespace in which they are declared. They will not conflict with converters on the same classes registered in other namespaces. They accept a map as an optional first argument, which is the default options for every class registered.
+The converters are registered under the namespace in which they are declared. They will not conflict with converters on the same classes registered in other namespaces. They accept a map as an optional first argument, which is the default options for every class registered. Individual options will be merged with the default options.
 
 You can register a class by giving its name as a string, and add optional arguments to the declaration:
   - `:exclude` will exclude the given methods from the resulting map
