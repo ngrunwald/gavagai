@@ -19,13 +19,14 @@ You need first to register a converter for every Java class you need to have tra
   (:require [gavagai.core :as g]))
 
 (g/register-converters
- ["java.util.Date" :exclude [:class] :add {:string str}]
- ["java.awt.Color" :only [:green :red :blue] :add {:string str} :lazy? false]
- ["java.awt.Button" :exclude [:class] :translate-arrays? true :lazy? false]
- ["java.awt.Button$AccessibleAWTButton" :exclude [:class :locale] :lazy? false])
+ {:exclude [:class]}
+ ["java.util.Date" :add {:string str}]
+ ["java.awt.Color" :only [:green #"r.d" :blue] :add {:string str} :lazy? false]
+ ["java.awt.Button" :translate-arrays? true]
+ ["java.awt.Button$AccessibleAWTButton" :exclude [:locale]])
 ```
 
-The converters are registered under the namespace in which they are declared. They will not conflict with converters on the same classes registered in other namespaces.
+The converters are registered under the namespace in which they are declared. They will not conflict with converters on the same classes registered in other namespaces. They accept a map as an optional first argument, which is the default options for every class registered.
 
 You can register a class by giving its name as a string, and add optional arguments to the declaration:
   - `:exclude` will exclude the given methods from the resulting map
@@ -70,7 +71,7 @@ enabled,focusable,visible>, :font nil, :accessible-component
 :focusable? true, :label "test", :font nil}
 ```
 
- The map keys are keywords obtained by removing the `get` or `is` prefix, hyphenizing the java method name, and adding a final `?` if the method returns a boolean. You can check what keys gavagai will use for every eligible methods by using the `inspect-class` function.
+ The map keys are keywords obtained by removing the `get` or `is` prefix, hyphenizing the java method name, and adding a final `?` if the method returns a boolean. You can check what keys gavagai will use for every eligible methods by using the `inspect-class` function. You can also use regexp patterns instead of keywords to select methods in the options.
 
 ```clojure
 (g/inspect-class java.util.Date)
@@ -87,9 +88,9 @@ enabled,focusable,visible>, :font nil, :accessible-component
 
 ## Performance and Caveats
 
- gavagai registers at compilation time static a protocol on each registered class with a type-hinted static function to realize the translation. As such, it is quite fast (some quick tests seem to imply it is somewhat faster than `core/bean`, which uses runtime reflection to translate the objects).
+ gavagai registers at compilation time a protocol on each registered class with a type-hinted static function to realize the translation. As such, it is quite fast (some quick tests seem to imply it is somewhat faster than `core/bean`, which uses runtime reflection to translate the objects).
 
- Also the resulting maps are by default fully lazy (as `core/bean`). If you need to serialize or pass around the value, you should fully realize it first (with `doall` for example). Be careful about infinite loop in objects graph if you do this. You can specify a `:max-depth` when calling translate to guard against this, or register a converter with the :lazy? option set to false.
+ Also the resulting maps are by default fully lazy (as `core/bean`). If you need to serialize or pass around the value, you should fully realize it first (with `doall` for example). Be careful about infinite loop in objects graph if you do this. You can specify a `:max-depth` when calling translate to guard against this.
 
 ## License
 
