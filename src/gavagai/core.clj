@@ -152,6 +152,7 @@
         fields-nb (if only
                     (+ (count only) (count add))
                     (- (+ (count read-methods) (count add)) (count exclude)))
+        big-hash? (> fields-nb 8)
         sig (reduce (fn [acc ^Method m]
                       (let [m-name (.getName m)
                             k-name (keyword (method->arg m))
@@ -167,12 +168,18 @@
         depth (gensym "depth")]
     `(fn
        [~obj ~opts]
-       (let [return# (~(if lazy? `lz/lazy-hash-map (if (> fields-nb 8) `hash-map `array-map))
-                      ~@(let [gets (for [[kw getter] sig]
-                                     `(~kw (translate (~getter ~obj) ~opts ~conf)))
-                              adds (for [[kw func] add]
-                                     `(~kw (~func ~obj)))]
-                          (apply concat (concat gets adds))))]
+       (let [lazy-over# (get ~opts :lazy? ~lazy?)
+             map-fn# (if lazy-over#
+                       lz/lazy-hash-map*
+                       ~(if big-hash? `hash-map `array-map))
+             return# (apply
+                      map-fn#
+                      (list
+                       ~@(let [gets (for [[kw getter] sig]
+                                      `(~kw (translate (~getter ~obj) ~opts ~conf)))
+                               adds (for [[kw func] add]
+                                      `(~kw (~func ~obj)))]
+                           (apply concat (concat gets adds)))))]
          return#))))
 
 (defn default-map

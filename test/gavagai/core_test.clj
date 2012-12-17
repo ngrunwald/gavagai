@@ -15,6 +15,14 @@
           (is (= (.getMinutes dt) (:minutes tdt)))
           (is (nil? (:class tdt)) )
           (is (= (.toString dt) (:string tdt)))))))
+  (testing "testing runtime override of lazyness"
+    (let [dt (java.util.Date.)]
+      (g/with-translator-ns gavagai.core-test
+        (let [tdt (g/translate dt {:lazy? false})]
+          (is (instance? clojure.lang.PersistentHashMap tdt))
+          (is (= (.getMinutes dt) (:minutes tdt)))
+          (is (nil? (:class tdt)) )
+          (is (= (.toString dt) (:string tdt)))))))
   (testing "testing non lazy translation and only"
     (let [c (java.awt.Color. 10 10 10)]
       (g/with-translator-ns gavagai.core-test
