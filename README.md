@@ -8,7 +8,7 @@ Easy to use conversion library between tree-like POJOs or anything else presenti
 [Clojars](http://clojars.org/gavagai):
 
 ```clojure
-[gavagai "0.2.0"]
+[gavagai "0.2.1"]
 ```
 
 ## Usage
