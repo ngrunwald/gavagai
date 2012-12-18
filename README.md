@@ -35,7 +35,11 @@ You can register a class by giving its name as a string, and add optional argume
   - `:add` takes a map of key to functions and includes in the map the result of calling each function with the current object. For exemple, if you want to include the original object in the map, you can do:
   - `:translate-arrays?` will translate any java-array returned by the methods of this object to Clojure vectors
 
-You can then call `translate` with the correct namespace on any registered POJO belonging to a registered class and itself and its children will be recursively translated.
+You can then call `translate` with the correct namespace on any registered POJO belonging to a registered class and itself and its children will be recursively translated. The translate function takes a map as second argument with the following keys:
+  - `:max-depth` -> integer (for recursive graph objects, to avoid infinite loops)
+  - `:nspace`    -> symbol or namespace object (useful if the with-translator-ns macro cannot be used)
+  - `:lazy?`     -> boolean (overrides the param given in the spec)
+
 
 ```clojure
 (let [b (java.awt.Color. 10 10 10)]
@@ -90,7 +94,7 @@ enabled,focusable,visible>, :font nil, :accessible-component
 
  gavagai registers at compilation time a protocol on each registered class with a type-hinted static function to realize the translation. As such, it is quite fast (some quick tests seem to imply it is somewhat faster than `core/bean`, which uses runtime reflection to translate the objects).
 
- Also the resulting maps are by default fully lazy (as `core/bean`). If you need to serialize or pass around the value, you should fully realize it first (with `doall` for example). Be careful about infinite loop in objects graph if you do this. You can specify a `:max-depth` when calling translate to guard against this.
+ Also the resulting maps are by default fully lazy (as `core/bean`). If you need to serialize or pass around the value, you should call translate with the lazy? set to false, to get a fully realized stucture. Be careful about infinite loop in objects graph if you do this. You can specify a `:max-depth` when calling translate to guard against this.
 
 ## License
 

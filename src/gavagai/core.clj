@@ -111,9 +111,10 @@
 (defn translate
   "Recursively translates a Java object to Clojure data structures.
    Arguments
-     :max-depth -> integer (for recursive graph objects)
+     :max-depth -> integer (for recursive graph objects, to avoid infinite loops)
      :nspace    -> symbol or namespace object
-                   (useful if the with-translator-ns macro cannot be used)"
+                   (useful if the with-translator-ns macro cannot be used)
+     :lazy?     -> boolean (overrides the param given in the spec)"
   ([obj {:keys [max-depth depth nspace] :as opts
          :or {depth 0}}
     {:keys [translate-arrays?] :as conf}]
