@@ -5,11 +5,15 @@
            [java.lang.reflect Method]
            [java.util.regex Pattern]))
 
+(declare translate)
+
 (defrecord Translator [registry])
 
 (defprotocol Translatable
   "Protocol to translate generic Java objects"
   (translate* [obj translator opts]))
+
+(def ^:dynamic *translator* nil)
 
 (defn method->arg
   [^Method method]
@@ -37,7 +41,7 @@
   "Inspects a class and returns a seq of methods name to their gavagai keyword representation"
   [klass]
   (into {}
-        (map (fn [m]
+        (map (fn [^Method m]
                [(.getName m) (method->arg m)])
              (get-read-methods klass))))
 
@@ -48,15 +52,37 @@
     1))
 
 (defn translate-with
+  [translator ^Object obj {:keys [depth max-depth] :as opts}]
+  (when-not (nil? obj)
+    (let [klass (.getClass obj)]
+      (when-let [converter (get-in translator [:registry klass])]
+        (converter
+         translator
+         obj
+         (if max-depth
+           (assoc opts :depth (safe-inc depth))
+           opts))))))
+
+(defn type-array-of
+  [^Class t]
+  (let [^Object result (java.lang.reflect.Array/newInstance t 0)]
+    (.getClass result)))
+
+(def any-array-class (type-array-of Object))
+
+(defn translate-list
   [translator obj {:keys [depth max-depth] :as opts}]
-  (let [klass (.getClass obj)]
-    (when-let [converter (get-in translator [:registry klass])]
-      (converter
-       translator
-       obj
-       (if max-depth
-         (assoc opts :depth (safe-inc depth))
-         opts)))))
+  (persistent!
+   (reduce
+    (fn [acc obj]
+      (conj! acc (translate
+                  translator
+                  obj
+                  (if max-depth
+                    (assoc opts
+                      :depth (safe-inc depth))
+                    opts))))
+    (transient []) obj)))
 
 (defn translate
   "Recursively translates a Java object to Clojure data structures.
@@ -66,7 +92,8 @@
                                   (true by default)
      :translate-arrays? (bool) -> translate native arrays to vectors
                                   (false by default)"
-  ([translator obj {:keys [max-depth depth translate-arrays?] :as opts}]
+  ([translator obj {:keys [max-depth depth translate-arrays?]
+                    :or {depth 0} :as opts}]
      (if (and max-depth (>= depth max-depth))
        obj
        (try
@@ -76,13 +103,11 @@
             (and translate-arrays? (instance? any-array-class obj)) (translate-list translator obj opts)
             :else (translate* obj translator opts)))
          (catch Exception e
-           (throw e))))))
-
-(defn type-array-of
-  [t]
-  (.getClass (java.lang.reflect.Array/newInstance t 0)))
-
-(def any-array-class (type-array-of Object))
+           (throw e)))))
+  ([obj opts]
+     (translate *translator* obj opts))
+  ([obj]
+     (translate *translator* obj {})))
 
 (extend-type nil
   Translatable
@@ -108,20 +133,6 @@
                    (assoc opts :depth (safe-inc depth))
                    opts))))
       (transient {}) obj))))
-
-(defn translate-list
-  [translator obj {:keys [depth max-depth] :as opts}]
-  (persistent!
-   (reduce
-    (fn [acc obj]
-      (conj! acc (translate
-                  translator
-                  obj
-                  (if max-depth
-                    (assoc opts
-                      :depth (safe-inc depth))
-                    opts))))
-    (transient []) obj)))
 
 (extend-type java.util.List
   Translatable
@@ -225,8 +236,7 @@
   (let [klass (Class/forName class-name)]
     (dissoc-in translator [:registry klass])))
 
-(comment
-  (defmacro register-converters
+(defn register-converters
    "Registers a converter for a given Java class given as a String. Takes an optional map
  as a first argument defining default options. Individual option maps are merged with defaults.
    Optional arguments
@@ -242,34 +252,38 @@
      (register-converters
        [\"java.util.Date\" :exclude [:class] :add {:string str} :lazy? false])
 
-   is equivalebnt to:
+   is equivalent to:
     (register-converters
        {:exclude [:class] :lazy? false}
        [\"java.util.Date\" :add {:string str}])"
-   [default & conv-defs]
-   (let [[full-conv-defs default-opts] (if (map? default)
-                                         [conv-defs default]
-                                         [(conj conv-defs default) {}])
-         added (count full-conv-defs)]
-     `(do
-        (init-translator!)
-        ~@(for [[class-name & {:as opt-spec}] full-conv-defs
-                :let [given-opts (default-map opt-spec
-                                   {:exclude [] :add {} :lazy? true})
-                      full-opts (merge-with
-                                 (fn [default over]
-                                   (cond
-                                    (every? map? [default over]) (merge default over)
-                                    (every? coll? [default over]) (distinct (concat default over))
-                                    :else over))
-                                 default-opts given-opts)]]
-            `(let [conv# (make-converter ~class-name ~full-opts)]
-               (extend ~(symbol class-name)
-                 ~'Clojurable
-                 {:translate-object conv#})))
-        ~added))))
+   ([translator default conv-defs]
+      (reduce
+       (fn [trans [class-name & {:as opt-spec}]]
+         (let [given-opts (default-map opt-spec
+                            {:exclude [] :add {} :lazy? true})
+               full-opts (merge-with
+                          (fn [default over]
+                            (cond
+                             (every? map? [default over]) (merge default over)
+                             (every? coll? [default over]) (distinct (concat default over))
+                             :else over))
+                          default given-opts)]
+           (register-converter trans [class-name full-opts])))
+       translator conv-defs))
+   ([param conv-defs]
+      (if (instance? Translator param)
+        (register-converters param {} conv-defs)
+        (register-converters (or *translator* (make-translator)) param conv-defs)))
+   ([conv-defs]
+      (register-converters (or *translator* (make-translator)) {} conv-defs)))
+
+(defmacro with-translator
+  [translator & body]
+  `(binding [*translator* ~translator]
+     ~@body))
 
 (comment
-  (register-converters
-   ["java.util.Date" :exclude [:class] :add {:string str}])
-  (with-translator-ns gavagai.core (translate (java.util.Date.))))
+  (let [trans (register-converters
+     [["java.util.Date" :exclude [:class] :add {:string str}]])]
+    (with-translator  trans
+      (translate (java.util.Date.)))))
