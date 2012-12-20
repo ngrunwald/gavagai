@@ -5,19 +5,11 @@
            [java.lang.reflect Method]
            [java.util.regex Pattern]))
 
-(declare translate-object)
-(declare Clojurable)
-(declare translate)
+(defrecord Translator [registry])
 
-(def ^{:dynamic true} *translator-ns*)
-
-(defmacro init-translator!
-  []
-  `(if (or (nil? (resolve (symbol "Clojurable")))
-           (instance? clojure.lang.Var$Unbound (var-get (resolve (symbol "Clojurable")))))
-     (defprotocol ~'Clojurable
-       "Protocol for conversion of custom Java classes"
-       (~'translate-object [~'obj ~'opts] "Convert response to Clojure data"))))
+(defprotocol Translatable
+  "Protocol to translate generic Java objects"
+  (translate* [obj translator opts]))
 
 (defn method->arg
   [^Method method]
@@ -49,13 +41,42 @@
                [(.getName m) (method->arg m)])
              (get-read-methods klass))))
 
-(defmacro with-translator-ns
-  "Sets the namespace to use for translate call within the body"
-  [nspace & body]
-  `(binding [*translator-ns* (if (instance? clojure.lang.Namespace '~nspace)
-                                '~nspace
-                                (find-ns '~nspace))]
-     ~@body))
+(defn safe-inc
+  [n]
+  (if n
+    (inc n)
+    1))
+
+(defn translate-with
+  [translator obj {:keys [depth max-depth] :as opts}]
+  (let [klass (.getClass obj)]
+    (when-let [converter (get-in translator [:registry klass])]
+      (converter
+       translator
+       obj
+       (if max-depth
+         (assoc opts :depth (safe-inc depth))
+         opts)))))
+
+(defn translate
+  "Recursively translates a Java object to Clojure data structures.
+   Arguments
+     :max-depth (integer)      -> for recursive graph objects, to avoid infinite loops
+     :lazy? (bool)             -> overrides the param given in the spec
+                                  (true by default)
+     :translate-arrays? (bool) -> translate native arrays to vectors
+                                  (false by default)"
+  ([translator obj {:keys [max-depth depth translate-arrays?] :as opts}]
+     (if (and max-depth (>= depth max-depth))
+       obj
+       (try
+         (let [conv (translate-with translator obj opts)]
+           (cond
+            conv conv
+            (and translate-arrays? (instance? any-array-class obj)) (translate-list translator obj opts)
+            :else (translate* obj translator opts)))
+         (catch Exception e
+           (throw e))))))
 
 (defn type-array-of
   [t]
@@ -63,77 +84,63 @@
 
 (def any-array-class (type-array-of Object))
 
-(defprotocol Translator
-  "Protocol to translate generic Java objects"
-  (translate* [obj opts]))
-
 (extend-type nil
-  Translator
-  (translate* [obj _] obj))
+  Translatable
+  (translate* [obj _ _] obj))
 
 (extend-type java.util.Map
-  Translator
-  (translate* [obj {:keys [depth nspace] :as opts
-                    :or {depth 0 nspace *translator-ns*}}]
+  Translatable
+  (translate* [obj translator {:keys [depth max-depth] :as opts}]
     (persistent!
-     (let [new-depth (inc depth)]
-       (reduce
-        (fn [acc ^java.util.Map$Entry e]
-          (assoc! acc
-                  (translate (.getKey e)
-                             (assoc opts :depth new-depth))
-                  (translate (.getValue e)
-                             (assoc opts :depth new-depth))))
-        (transient {}) obj)))))
+     (reduce
+      (fn [acc ^java.util.Map$Entry e]
+        (assoc! acc
+                (translate
+                 translator
+                 (.getKey e)
+                 (if max-depth
+                   (assoc opts :depth (safe-inc depth))
+                   opts))
+                (translate
+                 translator
+                 (.getValue e)
+                 (if max-depth
+                   (assoc opts :depth (safe-inc depth))
+                   opts))))
+      (transient {}) obj))))
 
 (defn translate-list
-  [obj {:keys [depth nspace] :as opts
-        :or {depth 0 nspace *translator-ns*}}]
+  [translator obj {:keys [depth max-depth] :as opts}]
   (persistent!
    (reduce
     (fn [acc obj]
-      (conj! acc (translate obj
-                            (assoc opts :depth (inc depth)))))
+      (conj! acc (translate
+                  translator
+                  obj
+                  (if max-depth
+                    (assoc opts
+                      :depth (safe-inc depth))
+                    opts))))
     (transient []) obj)))
 
 (extend-type java.util.List
-  Translator
-  (translate* [obj opts] (translate-list obj opts)))
+  Translatable
+  (translate* [obj translator opts] (translate-list translator obj opts)))
 
 (extend-type Object
-  Translator
-  (translate* [obj _] obj))
+  Translatable
+  (translate* [obj _ _]
+    obj))
 
 (defn get-var-in-ns
   [nspace symb]
   (var-get (ns-resolve nspace symb)))
 
-(defn translate
-  "Recursively translates a Java object to Clojure data structures.
-   Arguments
-     :max-depth -> integer (for recursive graph objects, to avoid infinite loops)
-     :nspace    -> symbol or namespace object
-                   (useful if the with-translator-ns macro cannot be used)
-     :lazy?     -> boolean (overrides the param given in the spec)"
-  ([obj {:keys [max-depth depth nspace] :as opts
-         :or {depth 0}}
-    {:keys [translate-arrays?] :as conf}]
-     (if (and max-depth (>= depth max-depth))
-       obj
-       (try
-         (let [nspace (or nspace *translator-ns*)
-               opts* (if (:nspace opts) opts (assoc opts :nspace nspace))]
-           (cond
-            (extends? (get-var-in-ns nspace 'Clojurable) (class obj))
-            ((get-var-in-ns nspace 'translate-object) obj (assoc opts* :depth (inc depth)))
-            (and translate-arrays? (instance? any-array-class obj)) (translate-list obj opts*)
-            :else (translate* obj opts*)))
-         (catch Exception e
-           (println e)
-           (throw e)
-           obj))))
-  ([obj opts] (translate obj opts {}))
-  ([obj] (translate obj {} {})))
+(def empty-array (object-array 0))
+
+(defn invoke-method
+  [^Method m obj]
+  (.invoke m obj empty-array))
 
 (defn- convert-to-pattern
   [elt]
@@ -141,7 +148,7 @@
     elt
     (Pattern/compile (Pattern/quote (name elt)))))
 
-(defmacro make-converter
+(defn make-converter
   [class-name & [{:keys [only exclude add lazy? translate-arrays?]
                   :or {exclude [] add {} lazy? true} :as opts}]]
   (let [klass (Class/forName class-name)
@@ -153,35 +160,33 @@
         fields-nb (if only
                     (+ (count only) (count add))
                     (- (+ (count read-methods) (count add)) (count exclude)))
-        big-hash? (> fields-nb 8)
-        sig (reduce (fn [acc ^Method m]
-                      (let [m-name (.getName m)
-                            k-name (keyword (method->arg m))
-                            m-call (symbol (str "." m-name))]
-                        (cond
-                         (some #(re-matches % (name k-name)) full-exclude) acc
-                         (and only (some #(re-matches % (name k-name)) full-only)) (assoc acc k-name m-call)
-                         (not (empty? only)) acc
-                         :else (assoc acc k-name m-call))))
-                    {} read-methods)
-        obj (with-meta (gensym "obj") {:tag klass-symb})
-        opts (gensym "opts")
-        depth (gensym "depth")]
-    `(fn
-       [~obj ~opts]
-       (let [lazy-over# (get ~opts :lazy? ~lazy?)
-             map-fn# (if lazy-over#
-                       lz/lazy-hash-map*
-                       ~(if big-hash? `hash-map `array-map))
-             return# (apply
-                      map-fn#
-                      (list
-                       ~@(let [gets (for [[kw getter] sig]
-                                      `(~kw (translate (~getter ~obj) ~opts ~conf)))
-                               adds (for [[kw func] add]
-                                      `(~kw (~func ~obj)))]
-                           (apply concat (concat gets adds)))))]
-         return#))))
+        hash-fn (if (> fields-nb 8) hash-map array-map)
+        mets (reduce (fn [acc ^Method m]
+                       (let [m-name (.getName m)
+                             k-name (keyword (method->arg m))]
+                         (cond
+                          (some #(re-matches % (name k-name)) full-exclude) acc
+                          (and only (some #(re-matches % (name k-name)) full-only))
+                          (assoc acc k-name (partial invoke-method m))
+                          (not (empty? only)) acc
+                          :else (assoc acc k-name (partial invoke-method m)))))
+                     {} read-methods)
+        ;; obj (with-meta (gensym "obj") {:tag klass-symb})
+        ]
+    (fn
+      [translator obj opts]
+      (let [lazy-over? (get opts :lazy? lazy?)
+            map-fn (if lazy-over?
+                     lz/lazy-hash-map*
+                     hash-fn)
+            return (apply
+                    map-fn
+                    (concat
+                     (mapcat (fn [[kw getter]]
+                               (list kw (translate translator (getter obj) (merge opts conf)))) mets)
+                     (mapcat (fn [[kw f]]
+                               (list kw (f obj))) add)))]
+        return))))
 
 (defn default-map
   [base default]
@@ -190,8 +195,39 @@
      (if (nil? b) d b))
    base default))
 
-(defmacro register-converters
-  "Registers a converter for a given Java class given as a String. Takes an optional map
+(defn dissoc-in
+  "Dissociates an entry from a nested associative structure returning a new
+  nested structure. keys is a sequence of keys. Any empty maps that result
+  will not be present in the new structure."
+  [m [k & ks :as keys]]
+  (if ks
+    (if-let [nextmap (get m k)]
+      (let [newmap (dissoc-in nextmap ks)]
+        (if (seq newmap)
+          (assoc m k newmap)
+          (dissoc m k)))
+      m)
+    (dissoc m k)))
+
+(defn make-translator
+  []
+  (Translator. {}))
+
+(defn register-converter
+  [translator [class-name opts]]
+  (let [klass (Class/forName class-name)
+        converter (make-converter class-name opts)
+        full-converter (vary-meta converter assoc :gavagai-spec opts)]
+    (update-in translator [:registry] assoc klass full-converter)))
+
+(defn unregister-converter
+  [translator class-name]
+  (let [klass (Class/forName class-name)]
+    (dissoc-in translator [:registry klass])))
+
+(comment
+  (defmacro register-converters
+   "Registers a converter for a given Java class given as a String. Takes an optional map
  as a first argument defining default options. Individual option maps are merged with defaults.
    Optional arguments
      - :only    (vector)  -> only translate these methods
@@ -210,28 +246,28 @@
     (register-converters
        {:exclude [:class] :lazy? false}
        [\"java.util.Date\" :add {:string str}])"
-  [default & conv-defs]
-  (let [[full-conv-defs default-opts] (if (map? default)
-                                        [conv-defs default]
-                                        [(conj conv-defs default) {}])
-        added (count full-conv-defs)]
-    `(do
-      (init-translator!)
-      ~@(for [[class-name & {:as opt-spec}] full-conv-defs
-              :let [given-opts (default-map opt-spec
-                                 {:exclude [] :add {} :lazy? true})
-                    full-opts (merge-with
-                               (fn [default over]
-                                 (cond
-                                  (every? map? [default over]) (merge default over)
-                                  (every? coll? [default over]) (distinct (concat default over))
-                                  :else over))
-                               default-opts given-opts)]]
-          `(let [conv# (make-converter ~class-name ~full-opts)]
-             (extend ~(symbol class-name)
-               ~'Clojurable
-               {:translate-object conv#})))
-      ~added)))
+   [default & conv-defs]
+   (let [[full-conv-defs default-opts] (if (map? default)
+                                         [conv-defs default]
+                                         [(conj conv-defs default) {}])
+         added (count full-conv-defs)]
+     `(do
+        (init-translator!)
+        ~@(for [[class-name & {:as opt-spec}] full-conv-defs
+                :let [given-opts (default-map opt-spec
+                                   {:exclude [] :add {} :lazy? true})
+                      full-opts (merge-with
+                                 (fn [default over]
+                                   (cond
+                                    (every? map? [default over]) (merge default over)
+                                    (every? coll? [default over]) (distinct (concat default over))
+                                    :else over))
+                                 default-opts given-opts)]]
+            `(let [conv# (make-converter ~class-name ~full-opts)]
+               (extend ~(symbol class-name)
+                 ~'Clojurable
+                 {:translate-object conv#})))
+        ~added))))
 
 (comment
   (register-converters
