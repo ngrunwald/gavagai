@@ -30,8 +30,6 @@
             (is (instance? clojure.lang.PersistentArrayMap tc))
             (is (= #{:green :red :blue :string} (into #{} (keys tc))))))))))
 
-
-
 (deftest greedy-tests
   (let [trans (g/register-converters
                {:exclude [:class]}
@@ -46,3 +44,17 @@
             (is (instance? java.awt.Button$AccessibleAWTButton
                            (get-in tb [:accessible-context :accessible-action :accessible-action])))
             (is (vector? (:action-listeners tb)))))))))
+
+(deftest interface-tests
+  (let [cs (java.util.zip.CRC32.)
+        trans (g/register-converters
+               (g/make-translator true)
+               {:lazy? false}
+               [["java.util.zip.Checksum"]
+                ["java.lang.Object" :only [:class]]])]
+    (.update cs 8)
+    (g/with-translator trans
+      (let [cst (g/translate cs {:super? true :max-depth 1})]
+        (is (number? (:value cst)))
+        (is (= java.util.zip.CRC32 (:class cst)))))))
+

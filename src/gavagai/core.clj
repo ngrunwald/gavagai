@@ -1,13 +1,14 @@
 (ns gavagai.core
   (:require [clojure.string :as str]
-            [lazymap.core :as lz])
+            [lazymap.core :as lz]
+            [clojure.set :as set])
   (:import [java.beans Introspector]
            [java.lang.reflect Method]
            [java.util.regex Pattern]))
 
 (declare translate)
 
-(defrecord Translator [registry])
+(defrecord Translator [registry super?])
 
 (defprotocol Translatable
   "Protocol to translate generic Java objects"
@@ -51,17 +52,41 @@
     (inc n)
     1))
 
+(defn get-super-converter
+  [translator klass]
+  (let [known (into #{}
+                    (-> translator
+                        (:registry)
+                        (keys)))
+        asc (ancestors klass)
+        super (set/intersection known asc)]
+    (when-not (empty? super)
+      (let [convs (map #((:registry translator) %) super)]
+        (fn [trans obj opts]
+          (apply merge
+                 (map
+                  (fn [conv]
+                    (conv trans obj opts))
+                  convs)))))))
+
 (defn translate-with
   [translator ^Object obj {:keys [depth max-depth] :as opts}]
   (when-not (nil? obj)
     (let [klass (.getClass obj)]
-      (when-let [converter (get-in translator [:registry klass])]
+      (if-let [converter (get-in translator [:registry klass])]
         (converter
          translator
          obj
          (if max-depth
            (assoc opts :depth (safe-inc depth))
-           opts))))))
+           opts))
+        (when-let [super (and (:super? translator) (get-super-converter translator klass))]
+          (super
+           translator
+           obj
+           (if max-depth
+             (assoc opts :depth (safe-inc depth))
+             opts)))))))
 
 (defn type-array-of
   [^Class t]
@@ -143,10 +168,6 @@
   (translate* [obj _ _]
     obj))
 
-(defn get-var-in-ns
-  [nspace symb]
-  (var-get (ns-resolve nspace symb)))
-
 (def empty-array (object-array 0))
 
 (defn invoke-method
@@ -181,9 +202,7 @@
                           (assoc acc k-name (partial invoke-method m))
                           (not (empty? only)) acc
                           :else (assoc acc k-name (partial invoke-method m)))))
-                     {} read-methods)
-        ;; obj (with-meta (gensym "obj") {:tag klass-symb})
-        ]
+                     {} read-methods)]
     (fn
       [translator obj opts]
       (let [lazy-over? (get opts :lazy? lazy?)
@@ -221,8 +240,8 @@
     (dissoc m k)))
 
 (defn make-translator
-  []
-  (Translator. {}))
+  ([] (Translator. {} false))
+  ([super?] (Translator. {} super?)))
 
 (defn register-converter
   [translator [class-name opts]]
