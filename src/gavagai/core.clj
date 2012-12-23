@@ -48,9 +48,7 @@
 
 (defn safe-inc
   [n]
-  (if n
-    (inc n)
-    1))
+  (if n (inc n) 1))
 
 (defn get-super-converter*
   [translator klass]
@@ -119,15 +117,16 @@
                                   (true by default)
      :translate-arrays? (bool) -> translate native arrays to vectors
                                   (false by default)"
-  ([translator obj {:keys [max-depth depth translate-arrays?]
-                    :or {depth 0} :as opts}]
-     (if (and max-depth (>= depth max-depth))
+  ([translator obj {:keys [max-depth] :as opts}]
+     (if (and max-depth (>= (get opts :depth 0) max-depth))
        obj
        (try
          (let [conv (translate-with translator obj opts)]
            (cond
             conv conv
-            (and translate-arrays? (instance? any-array-class obj)) (translate-list translator obj opts)
+            (and (:translate-arrays? opts)
+                 (instance? any-array-class obj))
+            (translate-list translator obj opts)
             :else (translate* obj translator opts)))
          (catch Exception e
            (throw e)))))
@@ -246,16 +245,20 @@
   ([super?] (Translator. {} super?)))
 
 (defn register-converter
-  [translator [class-name opts]]
-  (let [klass (Class/forName class-name)
-        converter (make-converter class-name opts)
-        full-converter (vary-meta converter assoc :gavagai-spec opts)]
-    (update-in translator [:registry] assoc klass full-converter)))
+  "Registers a converter for class-name."
+  ([translator [class-name opts]]
+     (let [klass (Class/forName class-name)
+           converter (make-converter class-name opts)
+           full-converter (vary-meta converter assoc :gavagai-spec opts)]
+       (update-in translator [:registry] assoc klass full-converter)))
+  ([spec] (register-converter *translator* spec)))
 
 (defn unregister-converter
-  [translator class-name]
-  (let [klass (Class/forName class-name)]
-    (dissoc-in translator [:registry klass])))
+  "Unregisters the class-name from the translator"
+  ([translator class-name]
+     (let [klass (Class/forName class-name)]
+       (dissoc-in translator [:registry klass])))
+  ([class-name] (unregister-converter *translator* class-name)))
 
 (defn register-converters
    "Registers a converter for a given Java class given as a String. Takes an optional map
@@ -271,12 +274,12 @@
                                     (false by default)
    Example
      (register-converters
-       [\"java.util.Date\" :exclude [:class] :add {:string str} :lazy? false])
+       [[\"java.util.Date\" :exclude [:class] :add {:string str} :lazy? false]])
 
    is equivalent to:
     (register-converters
        {:exclude [:class] :lazy? false}
-       [\"java.util.Date\" :add {:string str}])"
+       [[\"java.util.Date\" :add {:string str}]])"
    ([translator default conv-defs]
       (reduce
        (fn [trans [class-name & {:as opt-spec}]]
@@ -302,9 +305,3 @@
   [translator & body]
   `(binding [*translator* ~translator]
      ~@body))
-
-(comment
-  (let [trans (register-converters
-     [["java.util.Date" :exclude [:class] :add {:string str}]])]
-    (with-translator  trans
-      (translate (java.util.Date.)))))
