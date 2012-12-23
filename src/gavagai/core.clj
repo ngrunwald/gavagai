@@ -52,7 +52,7 @@
     (inc n)
     1))
 
-(defn get-super-converter
+(defn get-super-converter*
   [translator klass]
   (let [known (into #{}
                     (-> translator
@@ -68,6 +68,8 @@
                   (fn [conv]
                     (conv trans obj opts))
                   convs)))))))
+
+(def get-super-converter (memoize get-super-converter*))
 
 (defn translate-with
   [translator ^Object obj {:keys [depth max-depth] :as opts}]
