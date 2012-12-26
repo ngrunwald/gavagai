@@ -70,43 +70,36 @@
 (def get-super-converter (memoize get-super-converter*))
 
 (defn translate-with
-  [translator {:keys [depth max-depth] :as opts} ^Object obj]
+  [translator ^Object obj {:keys [depth max-depth] :as opts}]
   (when-not (nil? obj)
     (let [klass (.getClass obj)]
       (if-let [converter (get-in translator [:registry klass])]
         (converter
          translator
+         obj
          (if max-depth
            (assoc opts :depth (safe-inc depth))
-           opts)
-         obj)
+           opts))
         (when-let [super (and (:super? translator) (get-super-converter translator klass))]
           (super
            translator
+           obj
            (if max-depth
              (assoc opts :depth (safe-inc depth))
-             opts)
-           obj))))))
+             opts)))))))
 
-(defn type-array-of
-  [^Class t]
-  (let [^Object result (java.lang.reflect.Array/newInstance t 0)]
-    (.getClass result)))
-
-(def any-array-class (type-array-of Object))
-
-(defn translate-list
-  [translator {:keys [depth max-depth] :as opts} obj]
+(defn translate-seq
+  [translator obj {:keys [depth max-depth] :as opts}]
   (persistent!
    (reduce
     (fn [acc obj]
       (conj! acc (translate
                   translator
+                  obj
                   (if max-depth
                     (assoc opts
                       :depth (safe-inc depth))
-                    opts)
-                  obj)))
+                    opts))))
     (transient []) obj)))
 
 (defn translate
@@ -114,26 +107,24 @@
    Arguments
      :max-depth         (integer) -> for recursive graph objects, to avoid infinite loops
      :lazy?             (bool)    -> overrides the param given in the spec
-                                     (true by default)
-     :translate-arrays? (bool)    -> translate native arrays to vectors
-                                     (false by default)"
-  ([translator {:keys [max-depth] :as opts} obj]
+                                     (true by default)"
+  ([translator obj {:keys [max-depth] :as opts}]
      (if (and max-depth (>= (get opts :depth 0) max-depth))
        obj
        (try
-         (let [conv (translate-with translator opts obj)]
+         (let [conv (translate-with translator obj opts)]
            (cond
             conv conv
-            (and (:translate-arrays? opts)
+            (and (:translate-seqs? opts)
                  (instance? any-array-class obj))
-            (translate-list translator opts obj)
+            (translate-seq translator obj opts)
             :else (translate* obj translator opts)))
          (catch Exception e
            (throw e)))))
-  ([opts obj]
-     (translate *translator* opts obj))
+  ([obj opts]
+     (translate *translator* obj opts))
   ([obj]
-     (translate *translator* {} obj)))
+     (translate *translator* obj {})))
 
 (extend-type nil
   Translatable
@@ -148,21 +139,21 @@
         (assoc! acc
                 (translate
                  translator
+                 (.getKey e)
                  (if max-depth
                    (assoc opts :depth (safe-inc depth))
-                   opts)
-                 (.getKey e))
+                   opts))
                 (translate
                  translator
+                 (.getValue e)
                  (if max-depth
                    (assoc opts :depth (safe-inc depth))
-                   opts)
-                 (.getValue e))))
+                   opts))))
       (transient {}) obj))))
 
 (extend-type java.util.List
   Translatable
-  (translate* [obj translator opts] (translate-list translator opts obj)))
+  (translate* [obj translator opts] (translate-seq translator obj opts)))
 
 (extend-type Object
   Translatable
@@ -175,6 +166,23 @@
   [^Method m obj]
   (.invoke m obj empty-array))
 
+(defn is-iterable-class?
+  [^Class klass]
+  (let [ifs (into #{} (.getInterfaces klass))]
+    (contains? ifs Iterable)))
+
+(defn make-getter
+  ([^Method m {:keys [translate-seqs?]}]
+     (let [r-type (.getReturnType m)]
+       (if (and translate-seqs?
+                (or (.isArray r-type)
+                    (is-iterable-class? r-type)))
+         (fn [translator obj opts]
+           (translate-seq translator (.invoke m obj empty-array) opts))
+         (fn [translator obj opts]
+           (translate translator (.invoke m obj empty-array) opts)))))
+  ([m] (make-getter m {})))
+
 (defn- convert-to-pattern
   [elt]
   (if (instance? Pattern elt)
@@ -182,12 +190,12 @@
     (Pattern/compile (Pattern/quote (name elt)))))
 
 (defn make-converter
-  [class-name & [{:keys [only exclude add lazy? translate-arrays?]
+  [class-name & [{:keys [only exclude add lazy? translate-seqs?]
                   :or {exclude [] add {} lazy? true} :as opts}]]
   (let [klass (Class/forName class-name)
         klass-symb (symbol class-name)
         read-methods (get-read-methods klass)
-        conf {:translate-arrays? translate-arrays?}
+        conf {:translate-seqs? translate-seqs?}
         full-exclude (map convert-to-pattern exclude)
         full-only (map convert-to-pattern only)
         fields-nb (if only
@@ -200,12 +208,12 @@
                          (cond
                           (some #(re-matches % (name k-name)) full-exclude) acc
                           (and only (some #(re-matches % (name k-name)) full-only))
-                          (assoc acc k-name (partial invoke-method m))
+                          (assoc acc k-name (make-getter m conf))
                           (not (empty? only)) acc
-                          :else (assoc acc k-name (partial invoke-method m)))))
+                          :else (assoc acc k-name (make-getter m conf)))))
                      {} read-methods)]
     (fn
-      [translator opts obj]
+      [translator obj opts]
       (let [lazy-over? (get opts :lazy? lazy?)
             map-fn (if lazy-over?
                      lz/lazy-hash-map*
@@ -214,7 +222,7 @@
                     map-fn
                     (concat
                      (mapcat (fn [[kw getter]]
-                               (list kw (translate translator (merge opts conf) (getter obj)))) mets)
+                               (list kw (getter translator obj (merge opts conf)))) mets)
                      (mapcat (fn [[kw f]]
                                (list kw (f obj))) add)))]
         return))))
@@ -274,8 +282,8 @@
                              the function given as val to the object
      - :lazy?   (bool)    -> should the returned map be lazy or not
                              (lazy by default)
-     - :translate-arrays? (bool) -> translate native arrays to vectors
-                                    (false by default)
+     - :translate-seqs? (bool) -> translate native arrays to vectors
+                                  (false by default)
      - :super?  (bool)    -> should the created translator check ancestors and
                              interfaces for converters (false by default and not used
                              if a Translator is explicitely given)

@@ -19,7 +19,7 @@
             (is (= (.toString dt) (:string tdt))))))
       (testing "testing runtime override of lazyness"
         (let [dt (java.util.Date.)]
-          (let [tdt (g/translate {:lazy? false} dt)]
+          (let [tdt (g/translate dt {:lazy? false})]
             (is (instance? clojure.lang.PersistentHashMap tdt))
             (is (= (.getMinutes dt) (:minutes tdt)))
             (is (nil? (:class tdt)) )
@@ -33,16 +33,24 @@
 (deftest greedy-tests
   (let [trans (g/register-converters
                {:exclude [:class]}
-               [["java.awt.Button" :translate-arrays? true :lazy? false]
+               [["java.awt.Button" :translate-seqs? true :lazy? false]
                 ["java.awt.Button$AccessibleAWTButton"
                  :exclude [#"loc.le"] :lazy? false]])]
     (testing "testing recursivity, max-depth and array translations"
       (let [b (java.awt.Button. "test")]
         (g/with-translator trans
-          (let [tb (g/translate {:max-depth 3} b)]
+          (let [tb (g/translate b {:max-depth 3})]
             (is (nil? (:locale tb)))
             (is (instance? java.awt.Button$AccessibleAWTButton
                            (get-in tb [:accessible-context :accessible-action :accessible-action])))
+            (is (vector? (:action-listeners tb))))))))
+  (let [trans (g/register-converters
+               {:exclude [:class] :super? true}
+               [["java.awt.Button" :translate-seqs? true]])]
+    (testing "testing array translations compat"
+      (let [b (java.awt.Button. "test")]
+        (g/with-translator trans
+          (let [tb (g/translate b {:max-depth 3})]
             (is (vector? (:action-listeners tb)))))))))
 
 (deftest interface-tests
@@ -53,7 +61,7 @@
                 ["java.lang.Object" :only [:class]]])]
     (.update cs 8)
     (g/with-translator trans
-      (let [cst (g/translate {:super? true :max-depth 1} cs)]
+      (let [cst (g/translate cs {:super? true :max-depth 1})]
         (is (number? (:value cst)))
         (is (= java.util.zip.CRC32 (:class cst)))))))
 
