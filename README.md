@@ -36,6 +36,7 @@ You can register a class by giving its name as a string, and add optional argume
   - `:add` takes a map of key to functions and includes in the map the result of calling each function with the current object. For exemple, if you want to include the original object in the map, you can do:
   - `:translate-arrays?` will translate any java-array returned by the methods of this object to Clojure vectors
   - `:super?` will determine if the created translator should check ancestors and interfaces for converters (false by default and not used if a `Translator` is explicitely given)
+
 You can then call `translate` with the correct `Translator` on any registered object belonging to a registered class and itself and its members will be recursively translated. The translate function takes a map as second argument, these params override the ones given in the converter.
   - `:max-depth` -> integer (for recursive graph objects, to avoid infinite loops)
   - `:lazy?`     -> boolean (overrides the param given in the spec)
