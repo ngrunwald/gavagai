@@ -19,7 +19,7 @@
             (is (= (.toString dt) (:string tdt))))))
       (testing "testing runtime override of lazyness"
         (let [dt (java.util.Date.)]
-          (let [tdt (g/translate dt {:lazy? false})]
+          (let [tdt (g/translate {:lazy? false} dt)]
             (is (instance? clojure.lang.PersistentHashMap tdt))
             (is (= (.getMinutes dt) (:minutes tdt)))
             (is (nil? (:class tdt)) )
@@ -39,7 +39,7 @@
     (testing "testing recursivity, max-depth and array translations"
       (let [b (java.awt.Button. "test")]
         (g/with-translator trans
-          (let [tb (g/translate b {:max-depth 3})]
+          (let [tb (g/translate {:max-depth 3} b)]
             (is (nil? (:locale tb)))
             (is (instance? java.awt.Button$AccessibleAWTButton
                            (get-in tb [:accessible-context :accessible-action :accessible-action])))
@@ -48,13 +48,12 @@
 (deftest interface-tests
   (let [cs (java.util.zip.CRC32.)
         trans (g/register-converters
-               (g/make-translator true)
-               {:lazy? false}
+               {:lazy? false :super? true}
                [["java.util.zip.Checksum"]
                 ["java.lang.Object" :only [:class]]])]
     (.update cs 8)
     (g/with-translator trans
-      (let [cst (g/translate cs {:super? true :max-depth 1})]
+      (let [cst (g/translate {:super? true :max-depth 1} cs)]
         (is (number? (:value cst)))
         (is (= java.util.zip.CRC32 (:class cst)))))))
 

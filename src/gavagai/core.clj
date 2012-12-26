@@ -70,23 +70,23 @@
 (def get-super-converter (memoize get-super-converter*))
 
 (defn translate-with
-  [translator ^Object obj {:keys [depth max-depth] :as opts}]
+  [translator {:keys [depth max-depth] :as opts} ^Object obj]
   (when-not (nil? obj)
     (let [klass (.getClass obj)]
       (if-let [converter (get-in translator [:registry klass])]
         (converter
          translator
-         obj
          (if max-depth
            (assoc opts :depth (safe-inc depth))
-           opts))
+           opts)
+         obj)
         (when-let [super (and (:super? translator) (get-super-converter translator klass))]
           (super
            translator
-           obj
            (if max-depth
              (assoc opts :depth (safe-inc depth))
-             opts)))))))
+             opts)
+           obj))))))
 
 (defn type-array-of
   [^Class t]
@@ -96,44 +96,44 @@
 (def any-array-class (type-array-of Object))
 
 (defn translate-list
-  [translator obj {:keys [depth max-depth] :as opts}]
+  [translator {:keys [depth max-depth] :as opts} obj]
   (persistent!
    (reduce
     (fn [acc obj]
       (conj! acc (translate
                   translator
-                  obj
                   (if max-depth
                     (assoc opts
                       :depth (safe-inc depth))
-                    opts))))
+                    opts)
+                  obj)))
     (transient []) obj)))
 
 (defn translate
   "Recursively translates a Java object to Clojure data structures.
    Arguments
-     :max-depth (integer)      -> for recursive graph objects, to avoid infinite loops
-     :lazy? (bool)             -> overrides the param given in the spec
-                                  (true by default)
-     :translate-arrays? (bool) -> translate native arrays to vectors
-                                  (false by default)"
-  ([translator obj {:keys [max-depth] :as opts}]
+     :max-depth         (integer) -> for recursive graph objects, to avoid infinite loops
+     :lazy?             (bool)    -> overrides the param given in the spec
+                                     (true by default)
+     :translate-arrays? (bool)    -> translate native arrays to vectors
+                                     (false by default)"
+  ([translator {:keys [max-depth] :as opts} obj]
      (if (and max-depth (>= (get opts :depth 0) max-depth))
        obj
        (try
-         (let [conv (translate-with translator obj opts)]
+         (let [conv (translate-with translator opts obj)]
            (cond
             conv conv
             (and (:translate-arrays? opts)
                  (instance? any-array-class obj))
-            (translate-list translator obj opts)
+            (translate-list translator opts obj)
             :else (translate* obj translator opts)))
          (catch Exception e
            (throw e)))))
-  ([obj opts]
-     (translate *translator* obj opts))
+  ([opts obj]
+     (translate *translator* opts obj))
   ([obj]
-     (translate *translator* obj {})))
+     (translate *translator* {} obj)))
 
 (extend-type nil
   Translatable
@@ -148,21 +148,21 @@
         (assoc! acc
                 (translate
                  translator
-                 (.getKey e)
                  (if max-depth
                    (assoc opts :depth (safe-inc depth))
-                   opts))
+                   opts)
+                 (.getKey e))
                 (translate
                  translator
-                 (.getValue e)
                  (if max-depth
                    (assoc opts :depth (safe-inc depth))
-                   opts))))
+                   opts)
+                 (.getValue e))))
       (transient {}) obj))))
 
 (extend-type java.util.List
   Translatable
-  (translate* [obj translator opts] (translate-list translator obj opts)))
+  (translate* [obj translator opts] (translate-list translator opts obj)))
 
 (extend-type Object
   Translatable
@@ -205,7 +205,7 @@
                           :else (assoc acc k-name (partial invoke-method m)))))
                      {} read-methods)]
     (fn
-      [translator obj opts]
+      [translator opts obj]
       (let [lazy-over? (get opts :lazy? lazy?)
             map-fn (if lazy-over?
                      lz/lazy-hash-map*
@@ -214,7 +214,7 @@
                     map-fn
                     (concat
                      (mapcat (fn [[kw getter]]
-                               (list kw (translate translator (getter obj) (merge opts conf)))) mets)
+                               (list kw (translate translator (merge opts conf) (getter obj)))) mets)
                      (mapcat (fn [[kw f]]
                                (list kw (f obj))) add)))]
         return))))
@@ -276,8 +276,9 @@
                              (lazy by default)
      - :translate-arrays? (bool) -> translate native arrays to vectors
                                     (false by default)
-     - :super?  (bool)    -> should the created created translator check ancestors and
-                             interfaces for converters (false by default)
+     - :super?  (bool)    -> should the created translator check ancestors and
+                             interfaces for converters (false by default and not used
+                             if a Translator is explicitely given)
    Example
      (register-converters
        [[\"java.util.Date\" :exclude [:class] :add {:string str} :lazy? false]])
