@@ -43,7 +43,7 @@
             (is (nil? (:locale tb)))
             (is (instance? java.awt.Button$AccessibleAWTButton
                            (get-in tb [:accessible-context :accessible-action :accessible-action])))
-            (is (vector? (:action-listeners tb))))))))
+            (is (seq? (:action-listeners tb))))))))
   (let [trans (g/register-converters
                {:exclude [:class] :super? true}
                [["java.awt.Button" :translate-seqs? true]])]
@@ -51,7 +51,7 @@
       (let [b (java.awt.Button. "test")]
         (g/with-translator trans
           (let [tb (g/translate b {:max-depth 3})]
-            (is (vector? (:action-listeners tb)))))))))
+            (is (seq? (:action-listeners tb)))))))))
 
 (deftest interface-tests
   (let [cs (java.util.zip.CRC32.)

@@ -90,17 +90,14 @@
 
 (defn translate-seq
   [translator obj {:keys [depth max-depth] :as opts}]
-  (persistent!
-   (reduce
-    (fn [acc obj]
-      (conj! acc (translate
-                  translator
-                  obj
-                  (if max-depth
-                    (assoc opts
-                      :depth (safe-inc depth))
-                    opts))))
-    (transient []) obj)))
+  (map #(translate
+         translator
+         obj
+         (if max-depth
+           (assoc opts
+             :depth (safe-inc depth))
+           opts))
+       obj))
 
 (defn translate
   "Recursively translates a Java object to Clojure data structures.
@@ -112,13 +109,9 @@
      (if (and max-depth (>= (get opts :depth 0) max-depth))
        obj
        (try
-         (let [conv (translate-with translator obj opts)]
-           (cond
-            conv conv
-            (and (:translate-seqs? opts)
-                 (instance? any-array-class obj))
-            (translate-seq translator obj opts)
-            :else (translate* obj translator opts)))
+         (if-let [conv (translate-with translator obj opts)]
+           conv
+           (translate* obj translator opts))
          (catch Exception e
            (throw e)))))
   ([obj opts]
