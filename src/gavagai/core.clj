@@ -165,16 +165,16 @@
     (contains? ifs Iterable)))
 
 (defn make-getter
-  ([^Method m {:keys [translate-seqs?]}]
+  ([^Method m {:keys [translate-seqs?]} t-seq?]
      (let [r-type (.getReturnType m)]
-       (if (and translate-seqs?
+       (if (and (or translate-seqs? t-seq?)
                 (or (.isArray r-type)
                     (is-iterable-class? r-type)))
          (fn [translator obj opts]
            (translate-seq translator (.invoke m obj empty-array) opts))
          (fn [translator obj opts]
            (translate translator (.invoke m obj empty-array) opts)))))
-  ([m] (make-getter m {})))
+  ([m] (make-getter m {} false)))
 
 (defn- convert-to-pattern
   [elt]
@@ -182,28 +182,34 @@
     elt
     (Pattern/compile (Pattern/quote (name elt)))))
 
+(defn match-in-list?
+  [l n]
+  (some #(re-matches % (name n)) l))
+
 (defn make-converter
-  [class-name & [{:keys [only exclude add lazy? translate-seqs?]
-                  :or {exclude [] add {} lazy? true} :as opts}]]
+  [class-name & [{:keys [only exclude add lazy? translate-seqs? translate-seq]
+                  :or {exclude [] add {} lazy? true translate-seq []} :as opts}]]
   (let [klass (Class/forName class-name)
         klass-symb (symbol class-name)
         read-methods (get-read-methods klass)
         conf {:translate-seqs? translate-seqs?}
         full-exclude (map convert-to-pattern exclude)
         full-only (map convert-to-pattern only)
+        full-seq (map convert-to-pattern translate-seq)
         fields-nb (if only
                     (+ (count only) (count add))
                     (- (+ (count read-methods) (count add)) (count exclude)))
         hash-fn (if (> fields-nb 8) hash-map array-map)
         mets (reduce (fn [acc ^Method m]
                        (let [m-name (.getName m)
-                             k-name (keyword (method->arg m))]
+                             k-name (keyword (method->arg m))
+                             t-seq? (match-in-list? full-seq k-name)]
                          (cond
-                          (some #(re-matches % (name k-name)) full-exclude) acc
-                          (and only (some #(re-matches % (name k-name)) full-only))
-                          (assoc acc k-name (make-getter m conf))
+                          (match-in-list? full-exclude k-name) acc
+                          (and only (match-in-list? full-only k-name))
+                          (assoc acc k-name (make-getter m conf t-seq?))
                           (not (empty? only)) acc
-                          :else (assoc acc k-name (make-getter m conf)))))
+                          :else (assoc acc k-name (make-getter m conf t-seq?)))))
                      {} read-methods)]
     (fn
       [translator obj opts]
@@ -275,8 +281,10 @@
                              the function given as val to the object
      - :lazy?   (bool)    -> should the returned map be lazy or not
                              (lazy by default)
-     - :translate-seqs? (bool) -> translate native arrays to vectors
+     - :translate-seqs? (bool)  -> translate seq-like things (iterables and arrays) to seqs
                                   (false by default)
+     - :translate-seq (vector)  -> translate seq-like things (iterables and arrays) to seqs
+                                   only for these methods
      - :super?  (bool)    -> should the created translator check ancestors and
                              interfaces for converters (false by default and not used
                              if a Translator is explicitely given)
@@ -293,7 +301,7 @@
       (reduce
        (fn [trans [class-name & {:as opt-spec}]]
          (let [given-opts (default-map opt-spec
-                            {:exclude [] :add {} :lazy? true})
+                            {:exclude [] :add {} :lazy? true :translate-seq []})
                full-opts (merge-with
                           (fn [default over]
                             (cond

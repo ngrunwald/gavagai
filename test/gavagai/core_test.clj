@@ -46,7 +46,7 @@
             (is (seq? (:action-listeners tb))))))))
   (let [trans (g/register-converters
                {:exclude [:class] :super? true}
-               [["java.awt.Button" :translate-seqs? true]])]
+               [["java.awt.Button" :translate-seq [:action-listeners]]])]
     (testing "testing array translations compat"
       (let [b (java.awt.Button. "test")]
         (g/with-translator trans
