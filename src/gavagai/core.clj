@@ -241,6 +241,8 @@
     (dissoc m k)))
 
 (defn make-translator
+  "Creates an empty Translator. Optoional parameter to have translator check
+  ancestors and interfaces for converters"
   ([] (Translator. {} false))
   ([super?] (Translator. {} super?)))
 
@@ -261,8 +263,10 @@
   ([class-name] (unregister-converter *translator* class-name)))
 
 (defn register-converters
-   "Registers a converter for a given Java class given as a String. Takes an optional map
- as a first argument defining default options. Individual option maps are merged with defaults.
+   "Registers a converter for a given Java class given as a String.
+   Takes an optional Translator instance (will be created if not
+   given) and an optional map defining default options. Individual
+   option maps are merged with defaults.
    Optional arguments
      - :only    (vector)  -> only translate these methods
      - :exclude (vector)  -> exclude the methods from translation (keywords or patterns)
@@ -272,12 +276,15 @@
                              (lazy by default)
      - :translate-arrays? (bool) -> translate native arrays to vectors
                                     (false by default)
+     - :super?  (bool)    -> should the created created translator check ancestors and
+                             interfaces for converters (false by default)
    Example
      (register-converters
        [[\"java.util.Date\" :exclude [:class] :add {:string str} :lazy? false]])
 
    is equivalent to:
     (register-converters
+       (make-translator false)
        {:exclude [:class] :lazy? false}
        [[\"java.util.Date\" :add {:string str}]])"
    ([translator default conv-defs]
@@ -297,7 +304,7 @@
    ([param conv-defs]
       (if (instance? Translator param)
         (register-converters param {} conv-defs)
-        (register-converters (or *translator* (make-translator)) param conv-defs)))
+        (register-converters (or *translator* (make-translator (:super? param))) param conv-defs)))
    ([conv-defs]
       (register-converters (or *translator* (make-translator)) {} conv-defs)))
 
