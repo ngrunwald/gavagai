@@ -89,15 +89,16 @@
              opts)))))))
 
 (defn translate-seq
-  [translator obj {:keys [depth max-depth] :as opts}]
-  (map #(translate
-         translator
-         obj
-         (if max-depth
-           (assoc opts
-             :depth (safe-inc depth))
-           opts))
-       obj))
+  [translator obj {:keys [lazy? depth max-depth] :as opts}]
+  (let [t-fn (fn [elt]
+               (translate translator elt (if max-depth
+                                           (assoc opts
+                                             :depth (safe-inc depth))
+                                           opts)))]
+    (if lazy?
+      (map t-fn obj)
+      (persistent!
+       (reduce (fn [acc elt] (conj! acc (t-fn elt))) (transient []) obj)))))
 
 (defn translate
   "Recursively translates a Java object to Clojure data structures.
@@ -221,7 +222,7 @@
                     map-fn
                     (concat
                      (mapcat (fn [[kw getter]]
-                               (list kw (getter translator obj (merge opts conf)))) mets)
+                               (list kw (getter translator obj (merge opts conf {:lazy? lazy-over?})))) mets)
                      (mapcat (fn [[kw f]]
                                (list kw (f obj))) add)))]
         return))))
