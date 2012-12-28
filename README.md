@@ -34,7 +34,7 @@ You can register a class by giving its name as a string, and add optional argume
   - `:only` will only include the given methods in the resulting map
   - `:lazy?` determines whether this object should be translated to a lazy-hash-map or a good old eager hash-map
   - `:add` takes a map of key to functions and includes in the map the result of calling each function with the current object. For exemple, if you want to include the original object in the map, you can do:
-  - `:translate-arrays?` will translate seq-like things (iterables and arrays) to seqs (or vectors if not lazy) (false by default)
+  - `:translate-seqs?` will translate seq-like things (iterables and arrays) to seqs (or vectors if not lazy) (false by default)
   - :translate-seq is a vector of methods whose seq-like return (iterables and arrays) should be translated to seqs (or vectors if not lazy).
   - `:super?` will determine if the created translator should check ancestors and interfaces for converters (false by default and not used if a `Translator` is explicitely given)
   - `:throw?` determines  whether trying to register a converter for a class that does not exist should throw an exception or be silently ignored. (true by default)
