@@ -30,6 +30,18 @@
             (is (instance? clojure.lang.PersistentArrayMap tc))
             (is (= #{:green :red :blue :string} (into #{} (keys tc))))))))))
 
+(deftest lenient-converter
+  (let [etr (g/register-converters
+             {:throw? false}
+             [["foo"]])
+        etr (g/register-converters
+             etr
+             [["bar" :throw? false]])]
+    (is (instance? gavagai.core.Translator etr))
+    (is (thrown? ClassNotFoundException
+                 (g/register-converters
+                  [["foo"]])))))
+
 (deftest greedy-tests
   (let [trans (g/register-converters
                {:exclude [:class]}

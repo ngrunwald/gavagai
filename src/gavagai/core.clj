@@ -188,44 +188,49 @@
   (some #(re-matches % (name n)) l))
 
 (defn make-converter
-  [class-name & [{:keys [only exclude add lazy? translate-seqs? translate-seq]
-                  :or {exclude [] add {} lazy? true translate-seq []} :as opts}]]
-  (let [klass (Class/forName class-name)
-        klass-symb (symbol class-name)
-        read-methods (get-read-methods klass)
-        conf {:translate-seqs? translate-seqs?}
-        full-exclude (map convert-to-pattern exclude)
-        full-only (map convert-to-pattern only)
-        full-seq (map convert-to-pattern translate-seq)
-        fields-nb (if only
-                    (+ (count only) (count add))
-                    (- (+ (count read-methods) (count add)) (count exclude)))
-        hash-fn (if (> fields-nb 8) hash-map array-map)
-        mets (reduce (fn [acc ^Method m]
-                       (let [m-name (.getName m)
-                             k-name (keyword (method->arg m))
-                             t-seq? (match-in-list? full-seq k-name)]
-                         (cond
-                          (match-in-list? full-exclude k-name) acc
-                          (and only (match-in-list? full-only k-name))
-                          (assoc acc k-name (make-getter m conf t-seq?))
-                          (not (empty? only)) acc
-                          :else (assoc acc k-name (make-getter m conf t-seq?)))))
-                     {} read-methods)]
-    (fn
-      [translator obj opts]
-      (let [lazy-over? (get opts :lazy? lazy?)
-            map-fn (if lazy-over?
-                     lz/lazy-hash-map*
-                     hash-fn)
-            return (apply
-                    map-fn
-                    (concat
-                     (mapcat (fn [[kw getter]]
-                               (list kw (getter translator obj (merge opts conf {:lazy? lazy-over?})))) mets)
-                     (mapcat (fn [[kw f]]
-                               (list kw (f obj))) add)))]
-        return))))
+  [class-name & [{:keys [only exclude add lazy? translate-seqs? translate-seq throw?]
+                  :or {exclude [] add {} lazy? true translate-seq [] throw? true}
+                  :as opts}]]
+  (if-let [klass (try
+                   (Class/forName class-name)
+                   (catch ClassNotFoundException e
+                     (if throw?
+                       (throw e))))]
+    (let [klass-symb (symbol class-name)
+          read-methods (get-read-methods klass)
+          conf {:translate-seqs? translate-seqs?}
+          full-exclude (map convert-to-pattern exclude)
+          full-only (map convert-to-pattern only)
+          full-seq (map convert-to-pattern translate-seq)
+          fields-nb (if only
+                      (+ (count only) (count add))
+                      (- (+ (count read-methods) (count add)) (count exclude)))
+          hash-fn (if (> fields-nb 8) hash-map array-map)
+          mets (reduce (fn [acc ^Method m]
+                         (let [m-name (.getName m)
+                               k-name (keyword (method->arg m))
+                               t-seq? (match-in-list? full-seq k-name)]
+                           (cond
+                            (match-in-list? full-exclude k-name) acc
+                            (and only (match-in-list? full-only k-name))
+                            (assoc acc k-name (make-getter m conf t-seq?))
+                            (not (empty? only)) acc
+                            :else (assoc acc k-name (make-getter m conf t-seq?)))))
+                       {} read-methods)]
+      (fn
+        [translator obj opts]
+        (let [lazy-over? (get opts :lazy? lazy?)
+              map-fn (if lazy-over?
+                       lz/lazy-hash-map*
+                       hash-fn)
+              return (apply
+                      map-fn
+                      (concat
+                       (mapcat (fn [[kw getter]]
+                                 (list kw (getter translator obj (merge opts conf {:lazy? lazy-over?})))) mets)
+                       (mapcat (fn [[kw f]]
+                                 (list kw (f obj))) add)))]
+          return)))))
 
 (defn default-map
   [base default]
@@ -257,10 +262,11 @@
 (defn register-converter
   "Registers a converter for class-name."
   ([translator [class-name opts]]
-     (let [klass (Class/forName class-name)
-           converter (make-converter class-name opts)
-           full-converter (vary-meta converter assoc :gavagai-spec opts)]
-       (update-in translator [:registry] assoc klass full-converter)))
+     (if-let [converter (make-converter class-name opts)]
+       (let [klass (Class/forName class-name)
+             full-converter (vary-meta converter assoc :gavagai-spec opts)]
+         (update-in translator [:registry] assoc klass full-converter))
+       translator))
   ([spec] (register-converter *translator* spec)))
 
 (defn unregister-converter
@@ -289,6 +295,9 @@
      - :super?  (bool)    -> should the created translator check ancestors and
                              interfaces for converters (false by default and not used
                              if a Translator is explicitely given)
+     - :throw? (bool)     -> whether trying to register a converter for a class that does
+                             not exist should throw an exception or be silently ignored.
+                             (true by default)
    Example
      (register-converters
        [[\"java.util.Date\" :exclude [:class] :add {:string str} :lazy? false]])
@@ -301,15 +310,16 @@
    ([translator default conv-defs]
       (reduce
        (fn [trans [class-name & {:as opt-spec}]]
-         (let [given-opts (default-map opt-spec
-                            {:exclude [] :add {} :lazy? true :translate-seq []})
+         (let [full-default (default-map default {:lazy? true :throw? true})
+               given-opts (default-map opt-spec
+                            {:exclude [] :add {} :translate-seq []})
                full-opts (merge-with
                           (fn [default over]
                             (cond
                              (every? map? [default over]) (merge default over)
                              (every? coll? [default over]) (distinct (concat default over))
                              :else over))
-                          default given-opts)]
+                          full-default given-opts)]
            (register-converter trans [class-name full-opts])))
        translator conv-defs))
    ([param conv-defs]
