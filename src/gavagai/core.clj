@@ -289,9 +289,9 @@
      - :lazy?   (bool)    -> should the returned map be lazy or not
                              (lazy by default)
      - :translate-seqs? (bool)  -> translate seq-like things (iterables and arrays) to seqs
-                                  (false by default)
+                                   or vectors if not lazy (false by default)
      - :translate-seq (vector)  -> translate seq-like things (iterables and arrays) to seqs
-                                   only for these methods
+                                   or vector only for these methods
      - :super?  (bool)    -> should the created translator check ancestors and
                              interfaces for converters (false by default and not used
                              if a Translator is explicitely given)

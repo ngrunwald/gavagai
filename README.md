@@ -34,14 +34,14 @@ You can register a class by giving its name as a string, and add optional argume
   - `:only` will only include the given methods in the resulting map
   - `:lazy?` determines whether this object should be translated to a lazy-hash-map or a good old eager hash-map
   - `:add` takes a map of key to functions and includes in the map the result of calling each function with the current object. For exemple, if you want to include the original object in the map, you can do:
-  - `:translate-arrays?` will translate any java-array returned by the methods of this object to Clojure vectors
+  - `:translate-arrays?` will translate seq-like things (iterables and arrays) to seqs (or vectors if not lazy) (false by default)
+  - :translate-seq is a vector of methods whose seq-like return (iterables and arrays) should be translated to seqs (or vectors if not lazy).
   - `:super?` will determine if the created translator should check ancestors and interfaces for converters (false by default and not used if a `Translator` is explicitely given)
+  - `:throw?` determines  whether trying to register a converter for a class that does not exist should throw an exception or be silently ignored. (true by default)
 
 You can then call `translate` with the correct `Translator` on any registered object belonging to a registered class and itself and its members will be recursively translated. The translate function takes a map as second argument, these params override the ones given in the converter.
   - `:max-depth` -> integer (for recursive graph objects, to avoid infinite loops)
   - `:lazy?`     -> boolean (overrides the param given in the spec)
-  - `:translate-arrays?` -> boolean (translate native arrays to vectors)
-
 
 ```clojure
 (let [b (java.awt.Color. 10 10 10)]
