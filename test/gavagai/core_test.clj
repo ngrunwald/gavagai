@@ -8,15 +8,20 @@
                [["java.util.Date" :add {:string str}]
                 ["java.awt.Color"
                  :only [:green #"r.d" :blue]
-                 :add {:string str} :lazy? false]])]
+                 :add {:string str} :lazy? false]
+                ["java.util.GregorianCalendar"]])]
     (g/with-translator trans
       (testing "basic translations tests"
         (let [dt (java.util.Date.)]
           (let [tdt (g/translate dt)]
             (is (instance? lazymap.core.LazyPersistentMap tdt))
             (is (= (.getMinutes dt) (:minutes tdt)))
-            (is (nil? (:class tdt)) )
+            (is (nil? (:class tdt)))
             (is (= (.toString dt) (:string tdt))))))
+      (testing "unboxing boolean"
+        (let [cal (java.util.GregorianCalendar.)
+              calt (g/translate cal)]
+          (is (true? (:lenient? calt)))))
       (testing "testing runtime override of lazyness"
         (let [dt (java.util.Date.)]
           (let [tdt (g/translate dt {:lazy? false})]

@@ -168,13 +168,18 @@
 (defn make-getter
   ([^Method m {:keys [translate-seqs?]} t-seq?]
      (let [r-type (.getReturnType m)]
-       (if (and (or translate-seqs? t-seq?)
-                (or (.isArray r-type)
-                    (is-iterable-class? r-type)))
-         (fn [translator obj opts]
-           (translate-seq translator (.invoke m obj empty-array) opts))
-         (fn [translator obj opts]
-           (translate translator (.invoke m obj empty-array) opts)))))
+       (cond
+        (and (or translate-seqs? t-seq?)
+             (or (.isArray r-type)
+                 (is-iterable-class? r-type)))
+        (fn [translator obj opts]
+          (translate-seq translator (.invoke m obj empty-array) opts))
+        (= (.getName r-type) "boolean")
+        (fn [translator obj opts]
+          (let [^Boolean b (translate translator (.invoke m obj empty-array) opts)]
+            (Boolean/valueOf b)))
+        :else (fn [translator obj opts]
+                (translate translator (.invoke m obj empty-array) opts)))))
   ([m] (make-getter m {} false)))
 
 (defn- convert-to-pattern
