@@ -269,6 +269,11 @@
   [translator klass converter]
   (update-in translator [:registry] assoc klass converter))
 
+(defn remove-converter
+  "Removes a converter function from a translator for the given Class"
+  [translator klass]
+  (dissoc-in translator [:registry klass]))
+
 (defn register-converter
   "Registers a converter for class-name."
   ([translator [class-name opts]]
@@ -283,7 +288,7 @@
   "Unregisters the class-name from the translator"
   ([translator class-name]
      (let [klass (Class/forName class-name)]
-       (dissoc-in translator [:registry klass])))
+       (remove-converter translator klass)))
   ([class-name] (unregister-converter *translator* class-name)))
 
 (defn register-converters
