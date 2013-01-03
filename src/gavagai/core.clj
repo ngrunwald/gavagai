@@ -38,6 +38,14 @@
                    (getBeanInfo klass)
                    (getPropertyDescriptors)))))
 
+(defn class-for-name
+  [class-name throw?]
+  (try
+    (Class/forName class-name)
+    (catch ClassNotFoundException e
+      (if throw?
+        (throw e)))))
+
 (defn inspect-class
   "Inspects a class and returns a seq of methods name to their gavagai keyword representation"
   [klass]
@@ -196,11 +204,7 @@
   [class-name & [{:keys [only exclude add lazy? translate-seqs? translate-seq throw?]
                   :or {exclude [] add {} lazy? true translate-seq [] throw? true}
                   :as opts}]]
-  (if-let [klass (try
-                   (Class/forName class-name)
-                   (catch ClassNotFoundException e
-                     (if throw?
-                       (throw e))))]
+  (if-let [klass (class-for-name class-name throw?)]
     (let [klass-symb (symbol class-name)
           read-methods (get-read-methods klass)
           conf {:translate-seqs? translate-seqs?}
@@ -266,8 +270,19 @@
 
 (defn add-converter
   "Adds a converter function to a translator for the given Class"
-  [translator klass converter]
-  (update-in translator [:registry] assoc klass converter))
+  ([translator class-or-name converter opts]
+     (let [klass (cond
+                  (instance? java.lang.Class class-or-name) class-or-name
+                  (string? class-or-name)
+                  (class-for-name class-or-name (:throw? opts))
+                  :else (ex-info
+                         (str "Not a suitable (String or Class) converter target: " class-or-name)
+                         {:arg class-or-name}))]
+       (if klass
+         (update-in translator [:registry] assoc klass converter)
+         translator)))
+  ([translator class-or-name converter]
+     (add-converter translator class-or-name converter {})))
 
 (defn remove-converter
   "Removes a converter function from a translator for the given Class"
