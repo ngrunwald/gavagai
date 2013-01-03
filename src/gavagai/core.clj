@@ -264,13 +264,18 @@
   ([] (Translator. {} false))
   ([super?] (Translator. {} super?)))
 
+(defn add-converter
+  "Adds a converter function to a translator for the given Class"
+  [translator klass converter]
+  (update-in translator [:registry] assoc klass converter))
+
 (defn register-converter
   "Registers a converter for class-name."
   ([translator [class-name opts]]
      (if-let [converter (make-converter class-name opts)]
        (let [klass (Class/forName class-name)
              full-converter (vary-meta converter assoc :gavagai-spec opts)]
-         (update-in translator [:registry] assoc klass full-converter))
+         (add-converter translator klass converter))
        translator))
   ([spec] (register-converter *translator* spec)))
 
