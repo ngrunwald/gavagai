@@ -275,9 +275,10 @@
                   (instance? java.lang.Class class-or-name) class-or-name
                   (string? class-or-name)
                   (class-for-name class-or-name (:throw? opts))
-                  :else (ex-info
-                         (str "Not a suitable (String or Class) converter target: " class-or-name)
-                         {:arg class-or-name}))]
+                  :else (throw
+                         (ex-info
+                          (str "Not a suitable (String or Class) converter target: " class-or-name)
+                          {:arg class-or-name})))]
        (if klass
          (update-in translator [:registry] assoc klass converter)
          translator)))
