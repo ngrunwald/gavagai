@@ -206,12 +206,18 @@
   [l n]
   (some #(re-matches % (name n)) l))
 
+(defn- make-converter-name
+  [^Class klass]
+  (let [nam (.getName klass)]
+    (symbol (str "convert-" nam))))
+
 (defn make-converter
   [class-name & [{:keys [only exclude add lazy? translate-seqs? translate-seq throw?]
                   :or {exclude [] add {} lazy? true translate-seq [] throw? true}
                   :as conv-conf}]]
   (if-let [klass (class-for-name class-name throw?)]
     (let [klass-symb (symbol class-name)
+          conv-name (make-converter-name klass)
           read-methods (get-read-methods klass)
           conf {:translate-seqs? translate-seqs?}
           full-exclude (map convert-to-pattern exclude)
@@ -232,7 +238,7 @@
                             (not (empty? only)) acc
                             :else (assoc acc k-name (make-getter m conf t-seq?)))))
                        {} read-methods)]
-      (with-meta
+      (vary-meta
         (fn
           [translator obj opts]
           (let [lazy-over? (get opts :lazy? lazy?)
@@ -252,7 +258,9 @@
                             (list kw (f obj)))
                           add)))]
             return))
-        {::fields (into #{} (concat (keys mets) (keys add))) ::options conv-conf}))))
+        assoc
+        ::fields (into #{} (concat (keys mets) (keys add))) ::options conv-conf
+        ::class klass :name conv-name))))
 
 (defn get-class-meta
   ([translator klass]
