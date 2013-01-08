@@ -33,7 +33,12 @@
         (let [c (java.awt.Color. 10 10 10)]
           (let [tc (g/translate c)]
             (is (instance? clojure.lang.PersistentArrayMap tc))
-            (is (= #{:green :red :blue :string} (into #{} (keys tc))))))))))
+            (is (= #{:green :red :blue :string} (into #{} (keys tc)))))))
+      (testing "meta handling"
+        (is (map? (g/get-class-meta java.awt.Color)))
+        (is (= #{:green :red :blue :string} (g/get-class-fields "java.awt.Color")))
+        (is (map? (g/get-class-options "java.awt.Color")))
+        (is (nil? (g/get-class-meta "java.awt.Colour")))))))
 
 (deftest lenient-converter
   (let [etr (g/register-converters

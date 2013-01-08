@@ -77,11 +77,17 @@
 
 (def get-super-converter (memoize get-super-converter*))
 
+(defn get-converter
+  ([translator klass]
+     (get-in translator [:registry klass]))
+  ([klass]
+     (get-converter *translator* klass)))
+
 (defn translate-with
   [translator ^Object obj {:keys [depth max-depth] :as opts}]
   (when-not (nil? obj)
     (let [klass (.getClass obj)]
-      (if-let [converter (get-in translator [:registry klass])]
+      (if-let [converter (get-converter translator klass)]
         (converter
          translator
          obj
@@ -203,7 +209,7 @@
 (defn make-converter
   [class-name & [{:keys [only exclude add lazy? translate-seqs? translate-seq throw?]
                   :or {exclude [] add {} lazy? true translate-seq [] throw? true}
-                  :as opts}]]
+                  :as conv-conf}]]
   (if-let [klass (class-for-name class-name throw?)]
     (let [klass-symb (symbol class-name)
           read-methods (get-read-methods klass)
@@ -226,20 +232,46 @@
                             (not (empty? only)) acc
                             :else (assoc acc k-name (make-getter m conf t-seq?)))))
                        {} read-methods)]
-      (fn
-        [translator obj opts]
-        (let [lazy-over? (get opts :lazy? lazy?)
-              map-fn (if lazy-over?
-                       lz/lazy-hash-map*
-                       hash-fn)
-              return (apply
-                      map-fn
-                      (concat
-                       (mapcat (fn [[kw getter]]
-                                 (list kw (getter translator obj (merge opts conf {:lazy? lazy-over?})))) mets)
-                       (mapcat (fn [[kw f]]
-                                 (list kw (f obj))) add)))]
-          return)))))
+      (with-meta
+        (fn
+          [translator obj opts]
+          (let [lazy-over? (get opts :lazy? lazy?)
+                map-fn (if lazy-over?
+                         lz/lazy-hash-map*
+                         hash-fn)
+                return (apply
+                        map-fn
+                        (concat
+                         (mapcat
+                          (fn [[kw getter]]
+                            (list kw
+                                  (getter translator obj (merge opts conf {:lazy? lazy-over?}))))
+                          mets)
+                         (mapcat
+                          (fn [[kw f]]
+                            (list kw (f obj)))
+                          add)))]
+            return))
+        {::fields (into #{} (concat (keys mets) (keys add))) ::options conv-conf}))))
+
+(defn get-class-meta
+  ([translator klass]
+     (let [full-klass (if (string? klass)
+                        (class-for-name klass false)
+                        klass)]
+       (if full-klass
+         (meta (get-converter translator full-klass)))))
+  ([klass] (get-class-meta *translator* klass)))
+
+(defn get-class-fields
+  ([translator klass]
+     (::fields (get-class-meta translator klass)))
+  ([klass] (get-class-fields *translator* klass)))
+
+(defn get-class-options
+  ([translator klass]
+     (::options (get-class-meta translator klass)))
+  ([klass] (get-class-options *translator* klass)))
 
 (defn default-map
   [base default]
