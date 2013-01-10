@@ -272,11 +272,16 @@
   ([klass] (get-class-meta *translator* klass)))
 
 (defn get-class-fields
+  "Returns the fields of the translated map for the given class, with
+   all Translators options taken into account. nil if the class is not
+   registered."
   ([translator klass]
      (::fields (get-class-meta translator klass)))
   ([klass] (get-class-fields *translator* klass)))
 
 (defn get-class-options
+  "Returns the options used when registering the converter for thid
+   class."
   ([translator klass]
      (::options (get-class-meta translator klass)))
   ([klass] (get-class-options *translator* klass)))

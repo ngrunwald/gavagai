@@ -1,6 +1,6 @@
 # gavagai
 
-Easy to use conversion library between tree-like POJOs or anything else presenting a bean-like interface and Clojure data structures. It can be used as a fast, configurable and recursive replacement for core/bean. It is intended as a tool to easily build a bridge between Clojure and Java when writing wrapper libraries.
+Easy to use conversion library between tree-like POJOs or anything else presenting a bean-like interface and Clojure data structures. It can be used as a reasonably fast, configurable and recursive replacement for clojure.core/bean. It is intended as a tool to easily build a bridge between Clojure and Java when writing wrapper libraries.
 
 ## Installation
 
@@ -8,7 +8,7 @@ Easy to use conversion library between tree-like POJOs or anything else presenti
 [Clojars](http://clojars.org/gavagai):
 
 ```clojure
-[gavagai "0.3.0"]
+[gavagai "0.4.0"]
 ```
 
 ## Usage
@@ -96,6 +96,21 @@ enabled,focusable,visible>, :font nil, :accessible-component
 => {"isEmpty" :empty?, "getBytes" :bytes, "getClass" :class}
 ```
 
+ There are also functions to inspect the fields returned by a converter, with all declared options taken into account:
+
+```clojure
+(g/get-class-fields translator java.awt.Color)
+=> #{:red :green :blue}
+```
+
+ If you need to register a custom converter for a class, you can do it with `add-converter`. The converter is a plain Clojure function that takes 3 parameters, [translator object runtime-opts].
+
+```clojure
+(add-converter translator java.aws.Color
+  (fn [_ ^java.aws.Color color _]
+    {:red (.red color) :green (.gree color) :blue (.blue color)}))
+```
+
  To see a full-fledged exemple of gavagai use to build a wrapper around a very Java-centric API, you can check the code of [clj-rome](https://github.com/ngrunwald/clj-rome).
 
 ## Performance and Caveats
@@ -104,6 +119,6 @@ enabled,focusable,visible>, :font nil, :accessible-component
 
 ## License
 
-Copyright © 2012 Nils Grunwald
+Copyright © 2012, 2013 Nils Grunwald
 
 Distributed under the Eclipse Public License, the same as Clojure.
