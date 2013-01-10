@@ -314,7 +314,8 @@
   ([super?] (Translator. {} super?)))
 
 (defn add-converter
-  "Adds a converter function to a translator for the given Class"
+  "Adds a converter function to a translator for the given Class. The converter
+   is a plain Clojure function that takes 3 parameters: [translator object runtime-opts]"
   ([translator class-or-name converter opts]
      (let [klass (cond
                   (instance? java.lang.Class class-or-name) class-or-name
