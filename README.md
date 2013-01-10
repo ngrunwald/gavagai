@@ -108,7 +108,7 @@ enabled,focusable,visible>, :font nil, :accessible-component
 ```clojure
 (add-converter translator java.aws.Color
   (fn [_ ^java.aws.Color color _]
-    {:red (.red color) :green (.gree color) :blue (.blue color)}))
+    {:red (.red color) :green (.green color) :blue (.blue color)}))
 ```
 
  To see a full-fledged exemple of gavagai use to build a wrapper around a very Java-centric API, you can check the code of [clj-rome](https://github.com/ngrunwald/clj-rome).
