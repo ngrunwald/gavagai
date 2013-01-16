@@ -437,17 +437,19 @@
    ([translator default conv-defs]
       (reduce
        (fn [trans [class-name & {:as opt-spec}]]
-         (let [full-default (default-map default {:lazy? true :throw? true})
-               given-opts (default-map opt-spec
-                            {:exclude [] :add {} :translate-seq []})
-               full-opts (merge-with
-                          (fn [default over]
-                            (cond
-                             (every? map? [default over]) (merge default over)
-                             (every? coll? [default over]) (distinct (concat default over))
-                             :else over))
-                          full-default given-opts)]
-           (register-converter trans [class-name full-opts])))
+         (if-let [custom (:custom-converter opt-spec)]
+           (add-converter trans class-name custom opt-spec)
+           (let [full-default (default-map default {:lazy? true :throw? true})
+                 given-opts (default-map opt-spec
+                              {:exclude [] :add {} :translate-seq []})
+                 full-opts (merge-with
+                            (fn [default over]
+                              (cond
+                               (every? map? [default over]) (merge default over)
+                               (every? coll? [default over]) (distinct (concat default over))
+                               :else over))
+                            full-default given-opts)]
+             (register-converter trans [class-name full-opts]))))
        translator conv-defs))
    ([param conv-defs]
       (if (instance? Translator param)

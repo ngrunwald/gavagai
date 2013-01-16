@@ -10,7 +10,8 @@
                 ["java.awt.Color"
                  :only [:green #"r.d" :blue]
                  :add {:string str} :lazy? false]
-                ["java.util.GregorianCalendar"]])]
+                ["java.util.GregorianCalendar"]
+                ["java.util.Currency" :custom-converter (fn [_ o _] (keyword (.getSymbol o)))]])]
     (g/with-translator trans
       (testing "basic translations tests"
         (let [dt (java.util.Date.)]
@@ -39,7 +40,10 @@
         (is (map? (g/get-class-meta java.awt.Color)))
         (is (= #{:green :red :blue :string} (g/get-class-fields "java.awt.Color")))
         (is (map? (g/get-class-options "java.awt.Color")))
-        (is (nil? (g/get-class-meta "java.awt.Colour")))))))
+        (is (nil? (g/get-class-meta "java.awt.Colour"))))
+      (testing "custom converter"
+        (let [cur (java.util.Currency/getInstance "EUR")]
+          (is :EUR (g/translate cur)))))))
 
 (deftest lenient-converter
   (let [etr (g/register-converters
