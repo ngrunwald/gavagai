@@ -40,10 +40,9 @@ You can register a class by giving its name as a string, and add optional argume
   - `:throw?` determines  whether trying to register a converter for a class that does not exist should throw an exception or be silently ignored. (true by default)
 
 You can then call `translate` with the correct `Translator` on any registered object belonging to a registered class and itself and its members will be recursively translated. The translate function takes a map as second argument, these params override the ones given in the converter.
-  - `:omit-cyclic-ref? -> boolean (do not translate objects already seen in the object graph, to avoid stack overflow)
-  - `:max-depth` -> integer (for recursive graph objects, to avoid infinite loops)
-  - `:lazy?`     -> boolean (overrides the param given in the spec)
-
+  - `:lazy?`            -> boolean (overrides the param given in the spec)
+  - `:omit-cyclic-ref?` -> boolean (do not translate objects already seen in the object graph, to avoid stack overflow)
+  - `:max-depth`        -> integer (for recursive or very deep graph objects)
 
 ```clojure
 (let [b (java.awt.Color. 10 10 10)]
@@ -117,7 +116,7 @@ enabled,focusable,visible>, :font nil, :accessible-component
 
 ## Performance and Caveats
 
- The resulting maps are by default fully lazy (as `core/bean`). If you need to serialize or pass around the value, you should call translate with the `lazy?` set to false, to get a fully realized structure. Be careful about infinite loop in objects graph if you do this. You can specify a `:max-depth` when calling translate to guard against this.
+ The resulting maps are by default fully lazy (as `core/bean`). If you need to serialize or pass around the value, you should call translate with the `lazy?` set to false, to get a fully realized structure. Be careful about infinite loop in objects graph if you do this. You can set `:omit-cyclic-ref?` to `true` or specify a `:max-depth` when calling translate to guard against this.
 
 ## License
 
