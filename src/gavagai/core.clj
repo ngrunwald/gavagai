@@ -4,7 +4,8 @@
             [clojure.set :as set])
   (:import [java.beans Introspector]
            [java.lang.reflect Method]
-           [java.util.regex Pattern]))
+           [java.util.regex Pattern]
+           [java.util HashSet]))
 
 (declare translate)
 
@@ -83,6 +84,32 @@
   ([klass]
      (get-converter *translator* klass)))
 
+
+(defn get-class-meta
+  ([translator klass]
+     (let [full-klass (if (string? klass)
+                        (class-for-name klass false)
+                        klass)]
+       (if full-klass
+         (meta (get-converter translator full-klass)))))
+  ([klass] (get-class-meta *translator* klass)))
+
+(defn get-class-fields
+  "Returns the fields of the translated map for the given class, with
+   all Translators options taken into account. nil if the class is not
+   registered."
+  ([translator klass]
+     (::fields (get-class-meta translator klass)))
+  ([klass] (get-class-fields *translator* klass)))
+
+(defn get-class-options
+  "Returns the options used when registering the converter for this
+   class."
+  ([translator klass]
+     (::options (get-class-meta translator klass)))
+  ([klass] (get-class-options *translator* klass)))
+
+
 (defn translate-with
   [translator ^Object obj {:keys [depth max-depth] :as opts}]
   (when-not (nil? obj)
@@ -102,13 +129,37 @@
              (assoc opts :depth (safe-inc depth))
              opts)))))))
 
+
+(def ^{:dynamic true :tag HashSet} *cyclic-refs* nil)
+
+(defn translate-impl
+  [translator obj {:keys [max-depth depth]
+                   :or {depth 0} :as opts}]
+  (if (and max-depth (>= (get opts :depth 0) max-depth))
+    obj
+    (try
+      (let [identity-hashcode (System/identityHashCode obj)]
+        (if-not (contains? *cyclic-refs* identity-hashcode)
+          ;; if cyclic-refs is nul then contains? always returns false
+          (do (when *cyclic-refs*
+                ;; mark ref
+                (.add *cyclic-refs* identity-hashcode))
+
+              (if-let [conv (translate-with translator obj opts)]
+                conv
+                (translate* obj translator opts)))
+
+          obj))
+      (catch Exception e
+        (throw e)))))
+
 (defn translate-seq
   [translator obj {:keys [lazy? depth max-depth] :as opts}]
   (let [t-fn (fn [elt]
-               (translate translator elt (if max-depth
-                                           (assoc opts
-                                             :depth (safe-inc depth))
-                                           opts)))]
+               (translate-impl translator elt (if max-depth
+                                                (assoc opts
+                                                  :depth (safe-inc depth))
+                                                opts)))]
     (if lazy?
       (map t-fn obj)
       (persistent!
@@ -119,16 +170,15 @@
    Arguments
      :max-depth         (integer) -> for recursive graph objects, to avoid infinite loops
      :lazy?             (bool)    -> overrides the param given in the spec
-                                     (true by default)"
-  ([translator obj {:keys [max-depth] :as opts}]
-     (if (and max-depth (>= (get opts :depth 0) max-depth))
-       obj
-       (try
-         (if-let [conv (translate-with translator obj opts)]
-           conv
-           (translate* obj translator opts))
-         (catch Exception e
-           (throw e)))))
+                                     (true by default)
+     :omit-cyclic-ref?  (bool)    -> when set to true, the translator will not convert references
+                                     that were already converted in the object graph.
+                                     (default is false)"
+  ([translator root-obj {:keys [omit-cyclic-ref?] :as opts}]
+     (if omit-cyclic-ref?
+       (binding [*cyclic-refs* (HashSet.)]
+         (translate-impl translator root-obj opts))
+       (translate-impl translator root-obj opts)))
   ([obj opts]
      (translate *translator* obj opts))
   ([obj]
@@ -145,13 +195,13 @@
      (reduce
       (fn [acc ^java.util.Map$Entry e]
         (assoc! acc
-                (translate
+                (translate-impl
                  translator
                  (.getKey e)
                  (if max-depth
                    (assoc opts :depth (safe-inc depth))
                    opts))
-                (translate
+                (translate-impl
                  translator
                  (.getValue e)
                  (if max-depth
@@ -162,6 +212,34 @@
 (extend-type java.util.List
   Translatable
   (translate* [obj translator opts] (translate-seq translator obj opts)))
+
+(extend-type Boolean
+  Translatable
+  (translate* [obj _ _] (Boolean/valueOf obj)))
+
+(extend-type Integer
+  Translatable
+  (translate* [obj _ _] (Integer/valueOf obj)))
+
+(extend-type Double
+  Translatable
+  (translate* [obj _ _] (Double/valueOf obj)))
+
+(extend-type Long
+  Translatable
+  (translate* [obj _ _] (Long/valueOf obj)))
+
+(extend-type Float
+  Translatable
+  (translate* [obj _ _] (Float/valueOf obj)))
+
+(extend-type Byte
+  Translatable
+  (translate* [obj _ _] (Byte/valueOf obj)))
+
+(extend-type Short
+  Translatable
+  (translate* [obj _ _] (Short/valueOf obj)))
 
 (extend-type Object
   Translatable
@@ -188,12 +266,8 @@
                  (is-iterable-class? r-type)))
         (fn [translator obj opts]
           (translate-seq translator (.invoke m obj empty-array) opts))
-        (= (.getName r-type) "boolean")
-        (fn [translator obj opts]
-          (let [^Boolean b (translate translator (.invoke m obj empty-array) opts)]
-            (Boolean/valueOf b)))
         :else (fn [translator obj opts]
-                (translate translator (.invoke m obj empty-array) opts)))))
+                (translate-impl translator (.invoke m obj empty-array) opts)))))
   ([m] (make-getter m {} false)))
 
 (defn- convert-to-pattern
@@ -261,30 +335,6 @@
         assoc
         ::fields (into #{} (concat (keys mets) (keys add))) ::options conv-conf
         ::class klass :name conv-name))))
-
-(defn get-class-meta
-  ([translator klass]
-     (let [full-klass (if (string? klass)
-                        (class-for-name klass false)
-                        klass)]
-       (if full-klass
-         (meta (get-converter translator full-klass)))))
-  ([klass] (get-class-meta *translator* klass)))
-
-(defn get-class-fields
-  "Returns the fields of the translated map for the given class, with
-   all Translators options taken into account. nil if the class is not
-   registered."
-  ([translator klass]
-     (::fields (get-class-meta translator klass)))
-  ([klass] (get-class-fields *translator* klass)))
-
-(defn get-class-options
-  "Returns the options used when registering the converter for thid
-   class."
-  ([translator klass]
-     (::options (get-class-meta translator klass)))
-  ([klass] (get-class-options *translator* klass)))
 
 (defn default-map
   [base default]

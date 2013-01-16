@@ -1,6 +1,7 @@
 (ns gavagai.core-test
   (:use [clojure.test])
-  (:require [gavagai.core :as g]))
+  (:require [gavagai.core :as g])
+  (:import [java.util AbstractMap$SimpleEntry]))
 
 (deftest basic-tests
   (let [trans (g/register-converters
@@ -86,4 +87,24 @@
       (let [cst (g/translate cs {:super? true :max-depth 1})]
         (is (number? (:value cst)))
         (is (= java.util.zip.CRC32 (:class cst)))))))
+
+
+(defn make-pair
+  [k v]
+  (proxy [AbstractMap$SimpleEntry] [k v]
+    (toString [] (str k))))
+
+(deftest cyclic-ref-tests
+  (let [trans (g/register-converters
+               {:lazy? false :super? true}
+               [["java.util.Map$Entry"]])
+        a (make-pair "A" nil)
+        b (make-pair "B" a)]
+    (.setValue a b)
+    (g/with-translator trans
+      (let [bean (g/translate a {:omit-cyclic-ref? true})]
+        (is (= "A" (:key bean)))
+        (is (= "B" (get-in bean [:value :key])))
+        (is (= a (get-in bean [:value :value])))))))
+
 

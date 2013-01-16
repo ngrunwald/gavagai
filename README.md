@@ -40,8 +40,10 @@ You can register a class by giving its name as a string, and add optional argume
   - `:throw?` determines  whether trying to register a converter for a class that does not exist should throw an exception or be silently ignored. (true by default)
 
 You can then call `translate` with the correct `Translator` on any registered object belonging to a registered class and itself and its members will be recursively translated. The translate function takes a map as second argument, these params override the ones given in the converter.
+  - `:omit-cyclic-ref? -> boolean (do not translate objects already seen in the object graph, to avoid stack overflow)
   - `:max-depth` -> integer (for recursive graph objects, to avoid infinite loops)
   - `:lazy?`     -> boolean (overrides the param given in the spec)
+
 
 ```clojure
 (let [b (java.awt.Color. 10 10 10)]
