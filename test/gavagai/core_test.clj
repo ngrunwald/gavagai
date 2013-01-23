@@ -6,7 +6,8 @@
 (deftest basic-tests
   (let [trans (g/register-converters
                {:exclude [:class]}
-               [["java.util.Date" :add {:string str}]
+               [["java.util.Date"
+                 :add {:string str} :force ["hashCode"]]
                 ["java.awt.Color"
                  :only [:green #"r.d" :blue]
                  :add {:string str} :lazy? false]
@@ -19,6 +20,7 @@
             (is (instance? lazymap.core.LazyPersistentMap tdt))
             (is (= (.getMinutes dt) (:minutes tdt)))
             (is (nil? (:class tdt)))
+            (is (number? (:hash-code tdt)))
             (is (= (.toString dt) (:string tdt))))))
       (testing "unboxing boolean"
         (let [cal (java.util.GregorianCalendar.)

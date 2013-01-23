@@ -39,6 +39,11 @@
                    (getBeanInfo klass)
                    (getPropertyDescriptors)))))
 
+(defn get-force-methods
+  [^Class klass force]
+  (for [m-name force]
+    (.getMethod klass m-name (make-array Class 0))))
+
 (defn class-for-name
   [class-name throw?]
   (try
@@ -286,12 +291,13 @@
     (symbol (str "convert-" nam))))
 
 (defn make-converter
-  [class-name & [{:keys [only exclude add lazy? translate-seqs? translate-seq throw?]
+  [class-name & [{:keys [only exclude add lazy? translate-seqs? translate-seq throw? force]
                   :or {exclude [] add {} lazy? true translate-seq [] throw? true}
                   :as conv-conf}]]
   (if-let [klass (class-for-name class-name throw?)]
     (let [klass-symb (symbol class-name)
           conv-name (make-converter-name klass)
+          force-methods (get-force-methods klass force)
           read-methods (get-read-methods klass)
           conf {:translate-seqs? translate-seqs?}
           full-exclude (map convert-to-pattern exclude)
@@ -301,6 +307,13 @@
                       (+ (count only) (count add))
                       (- (+ (count read-methods) (count add)) (count exclude)))
           hash-fn (if (> fields-nb 8) hash-map array-map)
+          forced-mets (reduce
+                       (fn [acc ^Method m]
+                         (let [m-name (.getName m)
+                               k-name (keyword (method->arg m))
+                               t-seq? (match-in-list? full-seq k-name)]
+                           (assoc acc k-name (make-getter m conf t-seq?))))
+                       {} force-methods)
           mets (reduce (fn [acc ^Method m]
                          (let [m-name (.getName m)
                                k-name (keyword (method->arg m))
@@ -311,7 +324,7 @@
                             (assoc acc k-name (make-getter m conf t-seq?))
                             (not (empty? only)) acc
                             :else (assoc acc k-name (make-getter m conf t-seq?)))))
-                       {} read-methods)]
+                       forced-mets read-methods)]
       (vary-meta
         (fn
           [translator obj opts]
@@ -415,9 +428,9 @@
                              the function given as val to the object
      - :lazy?   (bool)    -> should the returned map be lazy or not
                              (lazy by default)
-     - :translate-seqs? (bool)  -> translate seq-like things (iterables and arrays) to seqs
+     - :translate-seqs? (bool) -> translate seq-like things (iterables and arrays) to seqs
                                    or vectors if not lazy (false by default)
-     - :translate-seq (vector)  -> translate seq-like things (iterables and arrays) to seqs
+     - :translate-seq (vector) -> translate seq-like things (iterables and arrays) to seqs
                                    or vector only for these methods
      - :super?  (bool)    -> should the created translator check ancestors and
                              interfaces for converters (false by default and not used
@@ -425,6 +438,9 @@
      - :throw? (bool)     -> whether trying to register a converter for a class that does
                              not exist should throw an exception or be silently ignored.
                              (true by default)
+     - :custom-converter (fn)   -> directly registers a custom converter fn for this class
+     - :force (vector)    -> the strings in the vector will force creation of getters for
+                             these methods, even if java reflection cannot pick them.
    Example
      (register-converters
        [[\"java.util.Date\" :exclude [:class] :add {:string str} :lazy? false]])
@@ -441,7 +457,7 @@
            (add-converter trans class-name custom opt-spec)
            (let [full-default (default-map default {:lazy? true :throw? true})
                  given-opts (default-map opt-spec
-                              {:exclude [] :add {} :translate-seq []})
+                              {:exclude [] :add {} :translate-seq [] :force []})
                  full-opts (merge-with
                             (fn [default over]
                               (cond
