@@ -2,13 +2,19 @@
 
 Easy to use conversion library between tree-like POJOs or anything else presenting a bean-like interface and Clojure data structures. It can be used as a reasonably fast, configurable and recursive replacement for clojure.core/bean. It is intended as a tool to easily build a bridge between Clojure and Java when writing wrapper libraries.
 
+## Motivation
+
+Many Java APIs of perfectly good and usable libraries are based on the premises of returning data under the shape of trees of ad-hoc objects. Here in Clojureland, we have learned the benefits of using data under the form of uniform well-known structures, such as vectors and maps. They are optionally lazy, easier to reason about, fun to explore at the REPL, and so on and so forth... But in every ad-hoc mutable object from Javaland, there is a small core of data waiting to be freed. This is what gavagai endeavours to do, provide a simple, not too crazy and magical, declarative way to translate from Javaland to pure, immutable Clojureland data. It is also intended to be fast enough, and configurable enough to go wherever it needs to go to extract our precious data. It achieves these goals by using once-only reflection on the Java classes to create translation functions.
+
+And if you wonder about the [name gavagai](http://en.wikipedia.org/wiki/Indeterminacy_of_translation), it is here to remind us that, though something is always lost in translation, we should still do our best to communicate with the people of our neighbouring lands...
+
 ## Installation
 
 `gavagai` is available as a Maven artifact from
 [Clojars](http://clojars.org/gavagai):
 
 ```clojure
-[gavagai "0.3.0"]
+[gavagai "0.3.1-SNAPSHOT"]
 ```
 
 ## Usage
@@ -39,50 +45,39 @@ You can register a class by giving its name as a string, and add optional argume
   - `:super?` will determine if the created translator should check ancestors and interfaces for converters (false by default and not used if a `Translator` is explicitely given)
   - `:throw?` determines  whether trying to register a converter for a class that does not exist should throw an exception or be silently ignored. (true by default)
   - `:force` is a vector of strings naming methods for which the creation of getters will be forced, even if Java reflection cannot pick them.
+  - `:custom-converter` directly registers a custom converter fn for this class. It takes 3 args, [translator object options]. If you do not need to call convert again, you can ignore the first and third.
 
-You can then call `translate` with the correct `Translator` on any registered object belonging to a registered class and itself and its members will be recursively translated. The translate function takes a map as second argument, these params override the ones given in the converter.
+You can then call `translate` with the correct `Translator` on any registered object belonging to a registered class and itself and its members will be recursively translated. The translate function takes a map as an optional third argument, these params override the ones given in the converter.
   - `:lazy?`            -> boolean (overrides the param given in the spec)
-  - `:omit-cyclic-ref?` -> boolean (do not translate objects already seen in the object graph, to avoid stack overflow)
+  - `:omit-cyclic-ref?` -> boolean (do not translate objects already seen in the object graph, to avoid stack overflows)
   - `:max-depth`        -> integer (for recursive or very deep graph objects)
 
 ```clojure
-(let [b (java.awt.Color. 10 10 10)]
-      (g/translate translator b))
+(let [color (java.awt.Color. 10 10 10)]
+      (g/translate translator color))
 => {:red 10, :blue 10, :green 10, :string "java.awt.Color[r=10,g=10,b=10]"}
 
 ;; You can also create a translating fn with the translator baked-in
 ;; (remenber Translators are immutable structures)
-(def my-translate (partial g/translate translator {:lazy? false}))
+(def my-translate (partial g/translate translator))
 (my-translate (java.awt.Color. 10 10 10))
 => {:red 10, :blue 10, :green 10, :string "java.awt.Color[r=10,g=10,b=10]"}
 
 ;; There is also a macro to avoid specifying the Translator:
 (let [b (java.awt.Button. "test")]
       (g/with-translator translator
-        (g/translate {:max-depth 2} b)])
-=> {:accessible-context {:accessible-role #<AccessibleRole push button>,
-:accessible-action #<AccessibleAWTButton
-java.awt.Button$AccessibleAWTButton@63f8c10e>, :background nil,
-:foreground nil, :accessible-name "test", :minimum-accessible-value 0,
-:class java.awt.Button$AccessibleAWTButton, :visible? true,
-:accessible-selection nil, :location #<Point java.awt.Point[x=0,y=0]>,
-:bounds #<Rectangle java.awt.Rectangle[x=0,y=0,width=0,height=0]>,
-:accessible-icon nil, :accessible-text nil, :accessible-description
-nil, :cursor #<Cursor java.awt.Cursor[Default Cursor]>, :size
-#<Dimension java.awt.Dimension[width=0,height=0]>,
-:accessible-index-in-parent -1, :current-accessible-value 0,
-:location-on-screen nil, :accessible-action-count 1,
-:focus-traversable? true, :enabled? true, :accessible-children-count
-0, :accessible-editable-text nil, :accessible-parent nil,
-:accessible-table nil, :accessible-relation-set
-#<AccessibleRelationSet >, :accessible-state-set #<AccessibleStateSet
-enabled,focusable,visible>, :font nil, :accessible-component
-#<AccessibleAWTButton java.awt.Button$AccessibleAWTButton@63f8c10e>,
-:showing? false, :maximum-accessible-value 0, :accessible-value
-#<AccessibleAWTButton java.awt.Button$AccessibleAWTButton@63f8c10e>},
-:background nil, :foreground nil, :name "button1", :visible? true,
-:action-command "test", :action-listeners [], :enabled? true,
-:focusable? true, :label "test", :font nil}
+        (g/translate b {:max-depth 2})])
+=> {:accessible-context
+    {:accessible-role #<AccessibleRole push button>,
+     :accessible-action
+       ;; though registered, this does not get translated because it is 3 levels deep
+     #<AccessibleAWTButton java.awt.Button$AccessibleAWTButton@1bfdfa36>,
+     :background nil,
+     :foreground nil,
+       ;; snip...
+     :focusable? true,
+     :label "test",
+     :font nil}}
 ```
 
  The map keys are keywords obtained by removing the `get` or `is` prefix, hyphenizing the java method name, and adding a final `?` if the method returns a boolean. You can check what keys gavagai will use for every eligible methods by using the `inspect-class` function. You can also use regexp patterns instead of keywords to select methods in the options.
@@ -102,15 +97,21 @@ enabled,focusable,visible>, :font nil, :accessible-component
 
 ```clojure
 (g/get-class-fields translator java.awt.Color)
-=> #{:red :green :blue}
+=> #{:red :string :blue :green}
 ```
 
  If you need to register a custom converter for a class, you can do it with `add-converter`. The converter is a plain Clojure function that takes 3 parameters, [translator object runtime-opts].
 
 ```clojure
-(add-converter translator java.aws.Color
-  (fn [_ ^java.aws.Color color _]
-    {:red (.red color) :green (.green color) :blue (.blue color)}))
+(let [color (java.awt.Color. 10 10 10)
+      f (fn [_ ^java.aws.Color color _]
+          (str "#" (apply str (drop 2 (Integer/toHexString (.getRGB color))))))
+      new-translator (g/add-converter translator java.aws.Color f)
+        ;; there is also a simpler syntax with register-converters
+      same-translator (g/register-converters translator
+                        [["java.aws.Color" :custom-converter f]])]
+  (g/translate new-translator color)
+=> "#0a0a0a"
 ```
 
  To see a full-fledged exemple of gavagai use to build a wrapper around a very Java-centric API, you can check the code of [clj-rome](https://github.com/ngrunwald/clj-rome).

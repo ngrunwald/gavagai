@@ -21,7 +21,7 @@
   [^Method method]
   (let [name (.getName method)
         typ (.getReturnType method)
-        conv (str/replace name #"^get" "")
+        conv (if (= name "get") name (str/replace name #"^get" ""))
         norm (str/lower-case (str/replace conv #"(\p{Lower})(\p{Upper})" "$1-$2"))
         full (if (= (.getName typ) "boolean") (-> norm (str "?") (str/replace #"^is-" "")) norm)]
     (keyword full)))
@@ -429,16 +429,19 @@
      - :lazy?   (bool)    -> should the returned map be lazy or not
                              (lazy by default)
      - :translate-seqs? (bool) -> translate seq-like things (iterables and arrays) to seqs
-                                   or vectors if not lazy (false by default)
+                                  or vectors if not lazy (false by default)
      - :translate-seq (vector) -> translate seq-like things (iterables and arrays) to seqs
-                                   or vector only for these methods
+                                  or vector only for these methods
      - :super?  (bool)    -> should the created translator check ancestors and
                              interfaces for converters (false by default and not used
                              if a Translator is explicitely given)
      - :throw? (bool)     -> whether trying to register a converter for a class that does
                              not exist should throw an exception or be silently ignored.
                              (true by default)
-     - :custom-converter (fn)   -> directly registers a custom converter fn for this class
+     - :custom-converter (fn)   -> directly registers a custom converter fn for this class.
+                                  It takes 3 args, [translator object options]. If you do
+                                  not need to call convert again, you can ignore the first
+                                  and third
      - :force (vector)    -> the strings in the vector will force creation of getters for
                              these methods, even if java reflection cannot pick them.
    Example
