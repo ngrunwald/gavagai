@@ -1,4 +1,4 @@
-(defproject gavagai "0.3.1-SNAPSHOT"
+(defproject gavagai "0.3.1"
   :description "Fast Clojure library to convert deep java objects structures to native Clojure"
   :url "https://github.com/ngrunwald/gavagai"
   :license {:name "Eclipse Public License"

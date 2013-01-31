@@ -14,7 +14,7 @@ And if you wonder about the [name gavagai](http://en.wikipedia.org/wiki/Indeterm
 [Clojars](http://clojars.org/gavagai):
 
 ```clojure
-[gavagai "0.3.1-SNAPSHOT"]
+[gavagai "0.3.1"]
 ```
 
 ## Usage
