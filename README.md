@@ -116,6 +116,10 @@ You can then call `translate` with the correct `Translator` on any registered ob
 
  To see a full-fledged exemple of gavagai use to build a wrapper around a very Java-centric API, you can check the code of [clj-rome](https://github.com/ngrunwald/clj-rome).
 
+## Related Info and Blog Posts
+
+  - [Introducing Gavagai](http://theblankscreen.net/blog/2013/02/18/introducing-gavagai/) wich reveals some of the motivation behind the project  
+
 ## Performance and Caveats
 
  The resulting maps are by default fully lazy (as `core/bean`). If you need to serialize or pass around the value, you should call translate with the `lazy?` set to false, to get a fully realized structure. Be careful about infinite loop in objects graph if you do this. You can set `:omit-cyclic-ref?` to `true` or specify a `:max-depth` when calling translate to guard against this.
