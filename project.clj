@@ -3,6 +3,5 @@
   :url "https://github.com/ngrunwald/gavagai"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.4.0"]
-                 [fr.grunwald/lazymap "3.1.0"]]
-  :warn-on-reflection true)
+  :dependencies [[org.clojure/clojure "1.5.1"]
+                 [fr.grunwald/lazymap "3.1.0"]])

@@ -18,12 +18,13 @@
 (def ^:dynamic *translator* nil)
 
 (defn method->arg
-  [^Method method]
+  [^Method method separator sweeten?]
   (let [name (.getName method)
         typ (.getReturnType method)
         conv (if (= name "get") name (str/replace name #"^get" ""))
-        norm (str/lower-case (str/replace conv #"(\p{Lower})(\p{Upper})" "$1-$2"))
-        full (if (= (.getName typ) "boolean") (-> norm (str "?") (str/replace #"^is-" "")) norm)]
+        norm (str/lower-case (str/replace conv #"(\p{Lower})(\p{Upper})" (format "$1%s$2" separator)))
+        full (if (and (= (.getName typ) "boolean")
+                      sweeten?) (-> norm (str "?") (str/replace #"^is-" "")) norm)]
     (keyword full)))
 
 (defn get-read-methods
@@ -57,7 +58,7 @@
   [klass]
   (into {}
         (map (fn [^Method m]
-               [(.getName m) (method->arg m)])
+               [(.getName m) (method->arg m "-" true)])
              (get-read-methods klass))))
 
 (defn safe-inc
@@ -291,8 +292,10 @@
     (symbol (str "convert-" nam))))
 
 (defn make-converter
-  [class-name & [{:keys [only exclude add lazy? translate-seqs? translate-seq throw? force]
-                  :or {exclude [] add {} lazy? true translate-seq [] throw? true}
+  [class-name & [{:keys [only exclude add lazy? translate-seqs? translate-seq throw? force
+                         separator sweeten-name?]
+                  :or {exclude [] add {} lazy? true translate-seq [] throw? true
+                       separator "-" sweeten-name? true}
                   :as conv-conf}]]
   (if-let [klass (class-for-name class-name throw?)]
     (let [klass-symb (symbol class-name)
@@ -310,13 +313,13 @@
           forced-mets (reduce
                        (fn [acc ^Method m]
                          (let [m-name (.getName m)
-                               k-name (keyword (method->arg m))
+                               k-name (keyword (method->arg m separator sweeten-name?))
                                t-seq? (match-in-list? full-seq k-name)]
                            (assoc acc k-name (make-getter m conf t-seq?))))
                        {} force-methods)
           mets (reduce (fn [acc ^Method m]
                          (let [m-name (.getName m)
-                               k-name (keyword (method->arg m))
+                               k-name (keyword (method->arg m separator sweeten-name?))
                                t-seq? (match-in-list? full-seq k-name)]
                            (cond
                             (match-in-list? full-exclude k-name) acc
