@@ -219,6 +219,10 @@
   Translatable
   (translate* [obj translator opts] (translate-seq translator obj opts)))
 
+(extend-type Enum
+  Translatable
+  (translate* [^Enum obj _ _] (keyword (.name obj))))
+
 (extend-type Boolean
   Translatable
   (translate* [obj _ _] (Boolean/valueOf obj)))
