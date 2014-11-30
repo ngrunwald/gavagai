@@ -13,9 +13,7 @@ And if you wonder about the [name gavagai](http://en.wikipedia.org/wiki/Indeterm
 `gavagai` is available as a Maven artifact from
 [Clojars](http://clojars.org/gavagai):
 
-```clojure
-[gavagai "0.3.1"]
-```
+[![Clojars Project](http://clojars.org/gavagai/latest-version.svg)](http://clojars.org/gavagai)
 
 ## Usage
 
@@ -46,6 +44,8 @@ You can register a class by giving its name as a string, and add optional argume
   - `:throw?` determines  whether trying to register a converter for a class that does not exist should throw an exception or be silently ignored. (true by default)
   - `:force` is a vector of strings naming methods for which the creation of getters will be forced, even if Java reflection cannot pick them.
   - `:custom-converter` directly registers a custom converter fn for this class. It takes 3 args, [translator object options]. If you do not need to call convert again, you can ignore the first and third.
+  - `:sweeten-name?` makes method names more idiomatic for Clojure, defaults to true
+  - `:separator` specifies which separator to use when converting from CamelCase, defaults to "-"
 
 You can then call `translate` with the correct `Translator` on any registered object belonging to a registered class and itself and its members will be recursively translated. The translate function takes a map as an optional third argument, these params override the ones given in the converter.
   - `:lazy?`            -> boolean (overrides the param given in the spec)
